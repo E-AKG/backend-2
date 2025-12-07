@@ -59,13 +59,29 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except ValueError as e:
-        # Pydantic validation errors (e.g., password too long)
+        # Pydantic validation errors (e.g., password too long, missing digit/letter)
         error_msg = str(e)
+        logger.warning(f"Registration failed: validation error - {error_msg} for email: {user.email}")
         if "72 bytes" in error_msg or "longer than" in error_msg.lower():
-            logger.warning(f"Registration failed: password too long - {user.email}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Das Passwort ist zu lang. Bitte verwenden Sie ein Passwort mit maximal 72 Zeichen."
+            )
+        # Translate common validation errors to German
+        if "at least one digit" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Das Passwort muss mindestens eine Ziffer enthalten."
+            )
+        if "at least one letter" in error_msg.lower() or "at least one alpha" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Das Passwort muss mindestens einen Buchstaben enthalten."
+            )
+        if "at least 8 characters" in error_msg.lower() or "8 characters long" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Das Passwort muss mindestens 8 Zeichen lang sein."
             )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
