@@ -58,6 +58,19 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
         
     except HTTPException:
         raise
+    except ValueError as e:
+        # Pydantic validation errors (e.g., password too long)
+        error_msg = str(e)
+        if "72 bytes" in error_msg or "longer than" in error_msg.lower():
+            logger.warning(f"Registration failed: password too long - {user.email}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Das Passwort ist zu lang. Bitte verwenden Sie ein Passwort mit maximal 72 Zeichen."
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_msg
+        )
     except SQLAlchemyError as e:
         db.rollback()
         logger.error(f"Database error during registration: {str(e)}")
@@ -67,7 +80,14 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
         )
     except Exception as e:
         db.rollback()
-        logger.error(f"Unexpected error during registration: {str(e)}")
+        error_msg = str(e)
+        logger.error(f"Unexpected error during registration: {error_msg}")
+        # Check if it's a bcrypt password length error
+        if "72 bytes" in error_msg or "cannot be longer" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Das Passwort ist zu lang. Bitte verwenden Sie ein Passwort mit maximal 72 Zeichen."
+            )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred. Please try again later."
