@@ -29,6 +29,11 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
         # Log registration attempt
         logger.info(f"Registration attempt for email: {user.email}")
         
+        # Log password info for debugging (without logging the actual password)
+        password_length = len(user.password)
+        password_bytes = len(user.password.encode('utf-8'))
+        logger.info(f"Password info: {password_length} characters, {password_bytes} bytes")
+        
         # Check if user already exists
         existing_user = db.query(User).filter(User.email == user.email).first()
         if existing_user:
@@ -39,7 +44,6 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
             )
         
         # Double-check password length before hashing (bcrypt limit is 72 bytes)
-        password_bytes = len(user.password.encode('utf-8'))
         if password_bytes > 72:
             logger.warning(f"Registration failed: password too long ({password_bytes} bytes) - {user.email}")
             raise HTTPException(
@@ -48,6 +52,7 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
             )
         
         # Hash password and create user
+        logger.info(f"Attempting to hash password ({password_bytes} bytes)")
         hashed_password = pwd_context.hash(user.password)
         new_user = User(email=user.email, password=hashed_password)
         
