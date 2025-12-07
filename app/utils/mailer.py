@@ -171,32 +171,56 @@ Diese E-Mail wurde automatisch generiert. Bitte antworten Sie nicht auf diese E-
         msg.attach(MIMEText(html, "html", "utf-8"))
 
         logger.info(f"🔌 Connecting to SMTP server: {settings.SMTP_HOST}:{settings.SMTP_PORT}")
-        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
+        try:
+            # Set timeout to prevent hanging (10 seconds)
+            server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10)
+            logger.info(f"✅ Connected to SMTP server")
+            
             logger.info(f"🔐 Starting TLS...")
             server.starttls()
+            logger.info(f"✅ TLS started")
+            
             logger.info(f"🔑 Logging in as {settings.SMTP_USER}...")
             server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+            logger.info(f"✅ Logged in successfully")
+            
             logger.info(f"📤 Sending email to {to_email}...")
             result = server.sendmail(from_email, to_email, msg.as_string())
+            server.quit()
+            
             if result:
                 logger.warning(f"⚠️ SMTP server returned errors: {result}")
             else:
                 logger.info(f"✅ Verification email sent successfully to {to_email} from {from_email}")
-        
-    except smtplib.SMTPAuthenticationError:
-        logger.error(f"SMTP authentication failed for {settings.SMTP_USER}")
+        except smtplib.SMTPConnectError as e:
+        logger.error(f"❌ SMTP connection error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not connect to email server. Please contact support."
+        )
+    except smtplib.SMTPTimeoutError as e:
+        logger.error(f"❌ SMTP timeout error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Email server timeout. Please try again later."
+        )
+    except smtplib.SMTPAuthenticationError as e:
+        logger.error(f"❌ SMTP authentication failed for {settings.SMTP_USER}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Email configuration error. Please contact support."
         )
     except smtplib.SMTPException as e:
-        logger.error(f"SMTP error sending email to {to_email}: {str(e)}")
+        logger.error(f"❌ SMTP error sending email to {to_email}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to send verification email. Please try again later."
         )
     except Exception as e:
-        logger.error(f"Unexpected error sending email to {to_email}: {str(e)}")
+        logger.error(f"❌ Unexpected error sending email to {to_email}: {str(e)}")
+        logger.error(f"❌ Error type: {type(e).__name__}")
+        import traceback
+        logger.error(f"❌ Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred. Please try again later."
