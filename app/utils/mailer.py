@@ -170,12 +170,18 @@ Diese E-Mail wurde automatisch generiert. Bitte antworten Sie nicht auf diese E-
         msg.attach(MIMEText(text, "plain", "utf-8"))
         msg.attach(MIMEText(html, "html", "utf-8"))
 
+        logger.info(f"🔌 Connecting to SMTP server: {settings.SMTP_HOST}:{settings.SMTP_PORT}")
         with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
+            logger.info(f"🔐 Starting TLS...")
             server.starttls()
+            logger.info(f"🔑 Logging in as {settings.SMTP_USER}...")
             server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-            server.sendmail(from_email, to_email, msg.as_string())
-        
-        logger.info(f"✅ Verification email sent successfully to {to_email} from {from_email}")
+            logger.info(f"📤 Sending email to {to_email}...")
+            result = server.sendmail(from_email, to_email, msg.as_string())
+            if result:
+                logger.warning(f"⚠️ SMTP server returned errors: {result}")
+            else:
+                logger.info(f"✅ Verification email sent successfully to {to_email} from {from_email}")
         
     except smtplib.SMTPAuthenticationError:
         logger.error(f"SMTP authentication failed for {settings.SMTP_USER}")
