@@ -1,4 +1,5 @@
 import smtplib
+import socket
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from fastapi import HTTPException, status
@@ -198,7 +199,7 @@ Diese E-Mail wurde automatisch generiert. Bitte antworten Sie nicht auf diese E-
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not connect to email server. Please contact support."
         )
-    except smtplib.SMTPTimeoutError as e:
+    except (socket.timeout, TimeoutError) as e:
         logger.error(f"❌ SMTP timeout error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
