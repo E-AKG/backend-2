@@ -38,6 +38,15 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
                 detail="Email already registered. Please use a different email or try logging in."
             )
         
+        # Double-check password length before hashing (bcrypt limit is 72 bytes)
+        password_bytes = len(user.password.encode('utf-8'))
+        if password_bytes > 72:
+            logger.warning(f"Registration failed: password too long ({password_bytes} bytes) - {user.email}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Das Passwort ist zu lang ({password_bytes} Bytes). Bitte verwenden Sie ein Passwort mit maximal 72 Bytes."
+            )
+        
         # Hash password and create user
         hashed_password = pwd_context.hash(user.password)
         new_user = User(email=user.email, password=hashed_password)
@@ -99,10 +108,10 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
         error_msg = str(e)
         logger.error(f"Unexpected error during registration: {error_msg}")
         # Check if it's a bcrypt password length error
-        if "72 bytes" in error_msg or "cannot be longer" in error_msg.lower():
+        if "72 bytes" in error_msg or "cannot be longer" in error_msg.lower() or "truncate manually" in error_msg.lower():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Das Passwort ist zu lang. Bitte verwenden Sie ein Passwort mit maximal 72 Zeichen."
+                detail="Das Passwort ist zu lang. Bitte verwenden Sie ein Passwort mit maximal 72 Bytes."
             )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
