@@ -64,11 +64,27 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
         
         # Generate verification token and send email
         verification_token = create_token({"sub": new_user.email})
-        send_verification_email(new_user.email, verification_token)
         
-        return {
-            "message": "Verifizierungs-E-Mail wurde versendet. Bitte überprüfen Sie Ihr Postfach (auch den Spam-Ordner) und bestätigen Sie Ihre E-Mail-Adresse."
-        }
+        # Try to send email, but don't fail registration if email fails
+        try:
+            send_verification_email(new_user.email, verification_token)
+            email_sent = True
+        except Exception as e:
+            logger.error(f"Failed to send verification email to {new_user.email}: {str(e)}")
+            logger.warning(f"User {new_user.email} registered but verification email failed to send")
+            email_sent = False
+        
+        if email_sent:
+            return {
+                "message": "Verifizierungs-E-Mail wurde versendet. Bitte überprüfen Sie Ihr Postfach (auch den Spam-Ordner) und bestätigen Sie Ihre E-Mail-Adresse."
+            }
+        else:
+            # Return success but warn about email issue
+            logger.warning(f"Registration successful but email not sent for {new_user.email}")
+            return {
+                "message": "Registrierung erfolgreich. Die Verifizierungs-E-Mail konnte jedoch nicht versendet werden. Bitte kontaktieren Sie den Support.",
+                "verification_token": verification_token  # Include token so user can verify manually
+            }
         
     except HTTPException:
         raise
