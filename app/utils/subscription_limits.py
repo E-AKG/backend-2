@@ -33,30 +33,12 @@ def check_unit_limit(
 ) -> None:
     """
     Check if user has reached the unit limit.
-    Trial users: max 1 unit
-    Paid users: unlimited
+    Currently: No limits for all users
     
     Raises HTTPException if limit reached.
     """
-    if has_active_subscription(current_user, db):
-        return  # Paid users have no limits
-    
-    # Count existing units for trial user
-    unit_count = db.query(func.count(Unit.id)).filter(
-        Unit.owner_id == current_user.id
-    ).scalar()
-    
-    if unit_count >= 1:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "unit_limit_reached",
-                "message": "Sie haben das Limit von 1 Einheit erreicht. Bitte upgraden Sie auf ein Abonnement, um weitere Einheiten anzulegen.",
-                "current_count": unit_count,
-                "limit": 1,
-                "upgrade_required": True
-            }
-        )
+    # No limits - all users can create unlimited units
+    return
 
 
 def check_csv_upload_limit(
@@ -65,30 +47,12 @@ def check_csv_upload_limit(
 ) -> None:
     """
     Check if user has reached the CSV upload limit.
-    Trial users: max 1 CSV file
-    Paid users: unlimited
+    Currently: No limits for all users
     
     Raises HTTPException if limit reached.
     """
-    if has_active_subscription(current_user, db):
-        return  # Paid users have no limits
-    
-    # Count existing CSV files for trial user
-    csv_count = db.query(func.count(CsvFile.id)).filter(
-        CsvFile.owner_id == current_user.id
-    ).scalar()
-    
-    if csv_count >= 1:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "csv_limit_reached",
-                "message": "Sie haben das Limit von 1 CSV-Datei erreicht. Bitte upgraden Sie auf ein Abonnement, um weitere CSV-Dateien hochzuladen.",
-                "current_count": csv_count,
-                "limit": 1,
-                "upgrade_required": True
-            }
-        )
+    # No limits - all users can upload unlimited CSV files
+    return
 
 
 def check_match_limit(
@@ -97,42 +61,19 @@ def check_match_limit(
 ) -> None:
     """
     Check if user has already performed a match operation.
-    Trial users: max 1 match operation
-    Paid users: unlimited
+    Currently: No limits for all users
     
     Raises HTTPException if limit reached.
     """
-    if has_active_subscription(current_user, db):
-        return  # Paid users have no limits
-    
-    # Count existing payment matches for trial user
-    # Check if user has any charges with matches
-    # Charge has no owner_id, need to join through BillRun
-    match_count = db.query(func.count(PaymentMatch.id)).join(
-        Charge, PaymentMatch.charge_id == Charge.id
-    ).join(
-        BillRun, Charge.bill_run_id == BillRun.id
-    ).filter(
-        BillRun.owner_id == current_user.id
-    ).scalar()
-    
-    if match_count >= 1:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "match_limit_reached",
-                "message": "Sie haben das Limit von 1 Abgleich erreicht. Bitte upgraden Sie auf ein Abonnement, um weitere Abgleiche durchzuführen.",
-                "current_count": match_count,
-                "limit": 1,
-                "upgrade_required": True
-            }
-        )
+    # No limits - all users can perform unlimited matches
+    return
 
 
 def get_user_limits(user: User, db: Session) -> dict:
     """
     Get current usage and limits for a user.
     Returns dict with limits and current usage.
+    Currently: All users have unlimited access.
     """
     has_subscription = has_active_subscription(user, db)
     
@@ -152,18 +93,11 @@ def get_user_limits(user: User, db: Session) -> dict:
         BillRun.owner_id == user.id
     ).scalar()
     
-    if has_subscription:
-        return {
-            "has_subscription": True,
-            "units": {"used": unit_count, "limit": None, "unlimited": True},
-            "csv_files": {"used": csv_count, "limit": None, "unlimited": True},
-            "matches": {"used": match_count, "limit": None, "unlimited": True},
-        }
-    else:
-        return {
-            "has_subscription": False,
-            "units": {"used": unit_count, "limit": 1, "unlimited": False},
-            "csv_files": {"used": csv_count, "limit": 1, "unlimited": False},
-            "matches": {"used": match_count, "limit": 1, "unlimited": False},
-        }
+    # All users have unlimited access
+    return {
+        "has_subscription": has_subscription,
+        "units": {"used": unit_count, "limit": None, "unlimited": True},
+        "csv_files": {"used": csv_count, "limit": None, "unlimited": True},
+        "matches": {"used": match_count, "limit": None, "unlimited": True},
+    }
 
