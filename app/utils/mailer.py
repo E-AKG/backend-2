@@ -71,9 +71,11 @@ def _get_email_html(verify_link: str) -> str:
                     <!-- Header -->
                     <tr>
                         <td style="background: linear-gradient(135deg, #0e7490 0%, #0891b2 100%); padding: 40px 30px; text-align: center;">
-                            <img src="{logo_url}" alt="IZENIC" style="max-width: 200px; height: auto; margin-bottom: 20px;" />
+                            <div style="display: inline-block; background-color: #ffffff; padding: 15px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);">
+                                <img src="{logo_url}" alt="Immpire" style="max-width: 180px; height: auto; display: block;" />
+                            </div>
                             <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">
-                                IZENIC
+                                Immpire
                             </h1>
                             <p style="margin: 10px 0 0 0; color: rgba(255, 255, 255, 0.95); font-size: 16px; font-weight: 500;">
                                 Immobilienverwaltung leicht gemacht
@@ -85,7 +87,7 @@ def _get_email_html(verify_link: str) -> str:
                     <tr>
                         <td style="padding: 40px 30px;">
                             <h2 style="margin: 0 0 20px 0; color: #164e63; font-size: 24px; font-weight: 700;">
-                                Willkommen bei IZENIC!
+                                Willkommen bei Immpire!
                             </h2>
                             
                             <p style="margin: 0 0 20px 0; color: #155e75; font-size: 16px; line-height: 1.7;">
@@ -130,15 +132,16 @@ def _get_email_html(verify_link: str) -> str:
                     
                     <!-- Footer -->
                     <tr>
-                        <td style="padding: 30px; background: linear-gradient(135deg, #cffafe 0%, #a5f3fc 100%); border-top: 1px solid #67e8f9; text-align: center;">
-                            <p style="margin: 0 0 10px 0; color: #155e75; font-size: 14px; line-height: 1.7;">
+                        <td style="padding: 30px; background-color: #f8fafc; border-top: 2px solid #0e7490; text-align: center;">
+                            <p style="margin: 0 0 10px 0; color: #1e293b; font-size: 14px; line-height: 1.7;">
                                 Mit freundlichen Grüßen,<br>
-                                <strong style="color: #164e63; font-size: 16px;">IZENIC</strong>
+                                <strong style="color: #0e7490; font-size: 16px;">Das Immpire Team</strong><br>
+                                <span style="color: #475569; font-size: 13px;">Entwickelt von IZENIC</span>
                             </p>
-                            <p style="margin: 20px 0 0 0; color: #0e7490; font-size: 14px; line-height: 1.7; font-weight: 500;">
+                            <p style="margin: 20px 0 0 0; color: #0e7490; font-size: 14px; line-height: 1.7; font-weight: 600;">
                                 kontakt@izenic.com
                             </p>
-                            <p style="margin: 20px 0 0 0; color: #67e8f9; font-size: 12px;">
+                            <p style="margin: 20px 0 0 0; color: #64748b; font-size: 12px;">
                                 Diese E-Mail wurde automatisch generiert. Bitte antworten Sie nicht auf diese E-Mail.
                             </p>
                         </td>
@@ -154,9 +157,9 @@ def _get_email_html(verify_link: str) -> str:
 
 def _get_email_text(verify_link: str) -> str:
     """Get plain text email content"""
-    return f"""IZENIC - E-Mail-Verifizierung
+    return f"""Immpire - E-Mail-Verifizierung
 
-Willkommen bei IZENIC!
+Willkommen bei Immpire!
 
 Vielen Dank für Ihre Registrierung. Um Ihr Konto zu aktivieren, bestätigen Sie bitte Ihre E-Mail-Adresse, indem Sie auf den folgenden Link klicken:
 
@@ -165,7 +168,8 @@ Vielen Dank für Ihre Registrierung. Um Ihr Konto zu aktivieren, bestätigen Sie
 WICHTIG: Dieser Link ist 1 Stunde gültig. Falls der Link abgelaufen ist, registrieren Sie sich bitte erneut.
 
 Mit freundlichen Grüßen,
-IZENIC
+Das Immpire Team
+Entwickelt von IZENIC
 
 kontakt@izenic.com
 
@@ -227,7 +231,7 @@ def _send_via_sendgrid_api(to_email: str, token: str, api_key: str = None):
         message = Mail(
             from_email=from_email,
             to_emails=to_email,
-            subject="E-Mail-Verifizierung – IZENIC",
+            subject="E-Mail-Verifizierung – Immpire",
             html_content=html_content,
             plain_text_content=text_content
         )
@@ -287,7 +291,7 @@ def _send_via_smtp(to_email: str, token: str):
     
     try:
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = "E-Mail-Verifizierung – IZENIC"
+        msg["Subject"] = "E-Mail-Verifizierung – Immpire"
         # Verwende SMTP_FROM_EMAIL falls gesetzt, sonst SMTP_USER
         from_email = settings.SMTP_FROM_EMAIL.strip() if settings.SMTP_FROM_EMAIL and settings.SMTP_FROM_EMAIL.strip() else settings.SMTP_USER
         msg["From"] = from_email
