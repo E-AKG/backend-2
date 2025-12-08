@@ -22,9 +22,12 @@ def send_verification_email(to_email: str, token: str):
         HTTPException: If email sending fails
     """
     # Use SendGrid API if available (better for Render)
-    if settings.SENDGRID_API_KEY:
+    # Check if SENDGRID_API_KEY is set and not empty
+    if settings.SENDGRID_API_KEY and settings.SENDGRID_API_KEY.strip():
+        logger.info("📧 Using SendGrid API (preferred method)")
         return _send_via_sendgrid_api(to_email, token)
     else:
+        logger.warning("⚠️ SENDGRID_API_KEY not set, falling back to SMTP")
         return _send_via_smtp(to_email, token)
 
 
