@@ -63,14 +63,14 @@ def _get_email_html(verify_link: str) -> str:
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>E-Mail-Verifizierung</title>
 </head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #ecfeff;">
-    <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #ecfeff;">
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #0e7490;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #0e7490;">
         <tr>
             <td style="padding: 40px 20px;">
-                <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; box-shadow: 0 10px 30px rgba(8, 145, 178, 0.15); overflow: hidden;">
+                <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; box-shadow: 0 10px 30px rgba(8, 145, 178, 0.3); overflow: hidden;">
                     <!-- Header -->
                     <tr>
-                        <td style="background: linear-gradient(135deg, #0891b2 0%, #06b6d4 100%); padding: 40px 30px; text-align: center;">
+                        <td style="background: linear-gradient(135deg, #0e7490 0%, #0891b2 100%); padding: 40px 30px; text-align: center;">
                             <img src="{logo_url}" alt="IZENIC" style="max-width: 200px; height: auto; margin-bottom: 20px;" />
                             <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">
                                 IZENIC
@@ -101,7 +101,7 @@ def _get_email_html(verify_link: str) -> str:
                                 <tr>
                                     <td style="text-align: center; padding: 20px 0;">
                                         <a href="{verify_link}" 
-                                           style="display: inline-block; background: linear-gradient(135deg, #0891b2 0%, #06b6d4 100%); color: #ffffff; text-decoration: none; padding: 18px 45px; border-radius: 10px; font-size: 16px; font-weight: 700; box-shadow: 0 6px 20px rgba(8, 145, 178, 0.4); transition: all 0.3s ease;">
+                                           style="display: inline-block; background: linear-gradient(135deg, #0e7490 0%, #0891b2 100%); color: #ffffff; text-decoration: none; padding: 18px 45px; border-radius: 10px; font-size: 16px; font-weight: 700; box-shadow: 0 6px 20px rgba(14, 116, 144, 0.5); transition: all 0.3s ease;">
                                             E-Mail-Adresse bestätigen
                                         </a>
                                     </td>
@@ -109,18 +109,18 @@ def _get_email_html(verify_link: str) -> str:
                             </table>
                             
                             <!-- Alternative Link -->
-                            <div style="margin: 30px 0; padding: 20px; background-color: #ecfeff; border-radius: 10px; border-left: 4px solid #0891b2;">
+                            <div style="margin: 30px 0; padding: 20px; background-color: #cffafe; border-radius: 10px; border-left: 4px solid #0e7490;">
                                 <p style="margin: 0 0 10px 0; color: #0e7490; font-size: 14px; font-weight: 600;">
                                     Falls der Button nicht funktioniert:
                                 </p>
                                 <p style="margin: 0; color: #155e75; font-size: 14px; line-height: 1.6; word-break: break-all;">
                                     Kopieren Sie diesen Link in Ihren Browser:<br>
-                                    <a href="{verify_link}" style="color: #0891b2; text-decoration: none; font-weight: 500;">{verify_link}</a>
+                                    <a href="{verify_link}" style="color: #0e7490; text-decoration: none; font-weight: 500;">{verify_link}</a>
                                 </p>
                             </div>
                             
                             <!-- Info Box -->
-                            <div style="margin: 30px 0; padding: 15px; background-color: #cffafe; border-radius: 10px; border-left: 4px solid #22d3ee;">
+                            <div style="margin: 30px 0; padding: 15px; background-color: #a5f3fc; border-radius: 10px; border-left: 4px solid #0891b2;">
                                 <p style="margin: 0; color: #164e63; font-size: 14px; line-height: 1.7;">
                                     <strong>⏰ Wichtig:</strong> Dieser Link ist 1 Stunde gültig. Falls der Link abgelaufen ist, registrieren Sie sich bitte erneut.
                                 </p>
@@ -130,7 +130,7 @@ def _get_email_html(verify_link: str) -> str:
                     
                     <!-- Footer -->
                     <tr>
-                        <td style="padding: 30px; background: linear-gradient(135deg, #ecfeff 0%, #cffafe 100%); border-top: 1px solid #a5f3fc; text-align: center;">
+                        <td style="padding: 30px; background: linear-gradient(135deg, #cffafe 0%, #a5f3fc 100%); border-top: 1px solid #67e8f9; text-align: center;">
                             <p style="margin: 0 0 10px 0; color: #155e75; font-size: 14px; line-height: 1.7;">
                                 Mit freundlichen Grüßen,<br>
                                 <strong style="color: #164e63; font-size: 16px;">IZENIC</strong>
