@@ -191,6 +191,9 @@ def verify_email(token: str, db: Session = Depends(get_db)):
 
 def _success_html(title: str, message: str) -> str:
     """Generate success HTML page"""
+    # Ensure FRONTEND_URL is properly formatted
+    frontend_url = settings.FRONTEND_URL.rstrip('/')
+    login_url = f"{frontend_url}/login"
     return f"""
     <!DOCTYPE html>
     <html lang="de">
@@ -278,8 +281,15 @@ def _success_html(title: str, message: str) -> str:
             </div>
             <h1>{title}</h1>
             <p>{message}</p>
-            <a href="{settings.FRONTEND_URL.rstrip('/')}/login" class="button">Zum Login →</a>
+            <a href="{login_url}" class="button" onclick="window.location.href='{login_url}'; return false;">Zum Login →</a>
         </div>
+        <script>
+            // Fallback: Ensure link works even if href fails
+            document.querySelector('.button').addEventListener('click', function(e) {{
+                e.preventDefault();
+                window.location.href = '{login_url}';
+            }});
+        </script>
     </body>
     </html>
     """
