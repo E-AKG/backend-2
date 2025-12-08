@@ -202,7 +202,7 @@ def _success_html(title: str, message: str) -> str:
             * {{ margin: 0; padding: 0; box-sizing: border-box; }}
             body {{
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                background: linear-gradient(135deg, #0e7490 0%, #0891b2 100%);
                 min-height: 100vh;
                 display: flex;
                 align-items: center;
@@ -249,7 +249,7 @@ def _success_html(title: str, message: str) -> str:
                 margin-bottom: 40px;
             }}
             .button {{
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                background: linear-gradient(135deg, #0e7490 0%, #0891b2 100%);
                 color: white;
                 padding: 16px 32px;
                 border-radius: 12px;
@@ -261,7 +261,7 @@ def _success_html(title: str, message: str) -> str:
             }}
             .button:hover {{
                 transform: translateY(-2px);
-                box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+                box-shadow: 0 10px 30px rgba(14, 116, 144, 0.5);
             }}
             @keyframes scaleIn {{
                 from {{ transform: scale(0); }}
@@ -278,7 +278,7 @@ def _success_html(title: str, message: str) -> str:
             </div>
             <h1>{title}</h1>
             <p>{message}</p>
-            <a href="{settings.FRONTEND_URL}/login" class="button">Zum Login →</a>
+            <a href="{settings.FRONTEND_URL.rstrip('/')}/login" class="button">Zum Login →</a>
         </div>
     </body>
     </html>
