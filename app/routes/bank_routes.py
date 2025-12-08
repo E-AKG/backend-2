@@ -1066,40 +1066,8 @@ async def upload_csv_transactions(
             logger.error(f"Fehler beim Zählen der CSV-Dateien: {str(e)}")
             csv_files_count = 0
         
-        # AUTOMATISCH: Führe Abgleich direkt mit CSV-Tabellen durch
-        matched_count = 0
-        try:
-            logger.info(f"🔄 Starte automatischen Abgleich mit CSV-Tabellen...")
-            
-            # Hole ALLE CSV-Dateien des Kontos (auch bereits hochgeladene)
-            csv_files_to_process = db.query(CsvFile).filter(
-                CsvFile.owner_id == current_user.id,
-                CsvFile.bank_account_id == account.id
-            ).all()
-            
-            logger.info(f"📋 Führe Abgleich mit {len(csv_files_to_process)} CSV-Datei(en) für Konto {account.account_name} durch")
-            
-            # Führe Abgleich direkt mit CSV-Tabellen durch
-            from ..utils.csv_matcher import match_csv_table_transactions
-            
-            csv_matched = 0
-            for csv_file in csv_files_to_process:
-                if csv_file.table_name:
-                    logger.info(f"🔄 Führe Abgleich mit CSV-Tabelle {csv_file.table_name} durch...")
-                    csv_stats = match_csv_table_transactions(db, csv_file, current_user.id, min_confidence=80.0)
-                    csv_matched += csv_stats.get("matched", 0)
-                    logger.info(f"✅ {csv_stats.get('matched', 0)} Matches aus {csv_file.filename}")
-                else:
-                    logger.warning(f"⚠️ CSV-Datei {csv_file.filename} hat keine PostgreSQL-Tabelle")
-            
-            matched_count = csv_matched
-            logger.info(f"✅ Automatischer Abgleich abgeschlossen: {matched_count} Zahlungen aus CSV-Tabellen zugeordnet")
-        
-        except Exception as convert_error:
-            logger.error(f"❌ Fehler bei automatischer CSV-Konvertierung: {str(convert_error)}")
-            import traceback
-            logger.error(traceback.format_exc())
-            # Kein Fehler werfen - Upload war erfolgreich, nur Konvertierung fehlgeschlagen
+        # KEIN automatischer Abgleich mehr - CSV wird nur hochgeladen
+        logger.info(f"✅ CSV-Upload erfolgreich abgeschlossen. {csv_files_count} Datei(en) gespeichert.")
         
         return {
             "status": "success",
@@ -1109,8 +1077,8 @@ async def upload_csv_transactions(
             "total_errors": total_errors,
             "files": file_results,
             "csv_files_saved": csv_files_count,
-            "auto_matched": matched_count,
-            "message": f"{len(files)} CSV-Datei(en) hochgeladen und als PostgreSQL-Tabellen gespeichert. {matched_count} Zahlungen automatisch zugeordnet."
+            "auto_matched": 0,
+            "message": f"{len(files)} CSV-Datei(en) erfolgreich hochgeladen und gespeichert. Sie können jetzt den Abgleich manuell durchführen."
         }
         
     except HTTPException:
