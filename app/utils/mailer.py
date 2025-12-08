@@ -54,6 +54,7 @@ def _get_verification_link(token: str) -> str:
 
 def _get_email_html(verify_link: str) -> str:
     """Get HTML email content"""
+    logo_url = f"{settings.FRONTEND_URL}/logo.png"
     return f"""
 <!DOCTYPE html>
 <html lang="de">
@@ -62,18 +63,19 @@ def _get_email_html(verify_link: str) -> str:
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>E-Mail-Verifizierung</title>
 </head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f7fa;">
-    <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f5f7fa;">
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #ecfeff;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #ecfeff;">
         <tr>
             <td style="padding: 40px 20px;">
-                <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden;">
+                <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; box-shadow: 0 10px 30px rgba(8, 145, 178, 0.15); overflow: hidden;">
                     <!-- Header -->
                     <tr>
-                        <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
-                            <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 600; letter-spacing: -0.5px;">
-                                Immpire
+                        <td style="background: linear-gradient(135deg, #0891b2 0%, #06b6d4 100%); padding: 40px 30px; text-align: center;">
+                            <img src="{logo_url}" alt="IZENIC" style="max-width: 200px; height: auto; margin-bottom: 20px;" />
+                            <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">
+                                IZENIC
                             </h1>
-                            <p style="margin: 10px 0 0 0; color: rgba(255, 255, 255, 0.9); font-size: 16px;">
+                            <p style="margin: 10px 0 0 0; color: rgba(255, 255, 255, 0.95); font-size: 16px; font-weight: 500;">
                                 Immobilienverwaltung leicht gemacht
                             </p>
                         </td>
@@ -82,15 +84,15 @@ def _get_email_html(verify_link: str) -> str:
                     <!-- Content -->
                     <tr>
                         <td style="padding: 40px 30px;">
-                            <h2 style="margin: 0 0 20px 0; color: #1a202c; font-size: 24px; font-weight: 600;">
-                                Willkommen bei Immpire!
+                            <h2 style="margin: 0 0 20px 0; color: #164e63; font-size: 24px; font-weight: 700;">
+                                Willkommen bei IZENIC!
                             </h2>
                             
-                            <p style="margin: 0 0 20px 0; color: #4a5568; font-size: 16px; line-height: 1.6;">
+                            <p style="margin: 0 0 20px 0; color: #155e75; font-size: 16px; line-height: 1.7;">
                                 Vielen Dank für Ihre Registrierung! Um Ihr Konto zu aktivieren, bestätigen Sie bitte Ihre E-Mail-Adresse.
                             </p>
                             
-                            <p style="margin: 0 0 30px 0; color: #4a5568; font-size: 16px; line-height: 1.6;">
+                            <p style="margin: 0 0 30px 0; color: #155e75; font-size: 16px; line-height: 1.7;">
                                 Klicken Sie einfach auf den Button unten, um Ihre E-Mail-Adresse zu verifizieren.
                             </p>
                             
@@ -99,7 +101,7 @@ def _get_email_html(verify_link: str) -> str:
                                 <tr>
                                     <td style="text-align: center; padding: 20px 0;">
                                         <a href="{verify_link}" 
-                                           style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); transition: all 0.3s ease;">
+                                           style="display: inline-block; background: linear-gradient(135deg, #0891b2 0%, #06b6d4 100%); color: #ffffff; text-decoration: none; padding: 18px 45px; border-radius: 10px; font-size: 16px; font-weight: 700; box-shadow: 0 6px 20px rgba(8, 145, 178, 0.4); transition: all 0.3s ease;">
                                             E-Mail-Adresse bestätigen
                                         </a>
                                     </td>
@@ -107,19 +109,19 @@ def _get_email_html(verify_link: str) -> str:
                             </table>
                             
                             <!-- Alternative Link -->
-                            <div style="margin: 30px 0; padding: 20px; background-color: #f7fafc; border-radius: 8px; border-left: 4px solid #667eea;">
-                                <p style="margin: 0 0 10px 0; color: #718096; font-size: 14px; font-weight: 600;">
+                            <div style="margin: 30px 0; padding: 20px; background-color: #ecfeff; border-radius: 10px; border-left: 4px solid #0891b2;">
+                                <p style="margin: 0 0 10px 0; color: #0e7490; font-size: 14px; font-weight: 600;">
                                     Falls der Button nicht funktioniert:
                                 </p>
-                                <p style="margin: 0; color: #4a5568; font-size: 14px; line-height: 1.6; word-break: break-all;">
+                                <p style="margin: 0; color: #155e75; font-size: 14px; line-height: 1.6; word-break: break-all;">
                                     Kopieren Sie diesen Link in Ihren Browser:<br>
-                                    <a href="{verify_link}" style="color: #667eea; text-decoration: none;">{verify_link}</a>
+                                    <a href="{verify_link}" style="color: #0891b2; text-decoration: none; font-weight: 500;">{verify_link}</a>
                                 </p>
                             </div>
                             
                             <!-- Info Box -->
-                            <div style="margin: 30px 0; padding: 15px; background-color: #fff5e6; border-radius: 8px; border-left: 4px solid #f6ad55;">
-                                <p style="margin: 0; color: #744210; font-size: 14px; line-height: 1.6;">
+                            <div style="margin: 30px 0; padding: 15px; background-color: #cffafe; border-radius: 10px; border-left: 4px solid #22d3ee;">
+                                <p style="margin: 0; color: #164e63; font-size: 14px; line-height: 1.7;">
                                     <strong>⏰ Wichtig:</strong> Dieser Link ist 1 Stunde gültig. Falls der Link abgelaufen ist, registrieren Sie sich bitte erneut.
                                 </p>
                             </div>
@@ -128,16 +130,15 @@ def _get_email_html(verify_link: str) -> str:
                     
                     <!-- Footer -->
                     <tr>
-                        <td style="padding: 30px; background-color: #f7fafc; border-top: 1px solid #e2e8f0; text-align: center;">
-                            <p style="margin: 0 0 10px 0; color: #718096; font-size: 14px; line-height: 1.6;">
+                        <td style="padding: 30px; background: linear-gradient(135deg, #ecfeff 0%, #cffafe 100%); border-top: 1px solid #a5f3fc; text-align: center;">
+                            <p style="margin: 0 0 10px 0; color: #155e75; font-size: 14px; line-height: 1.7;">
                                 Mit freundlichen Grüßen,<br>
-                                <strong style="color: #4a5568;">Das Immpire Team</strong>
+                                <strong style="color: #164e63; font-size: 16px;">IZENIC</strong>
                             </p>
-                            <p style="margin: 20px 0 0 0; color: #a0aec0; font-size: 12px; line-height: 1.6;">
-                                Immpire<br>
-                                kontakt@immpire.com
+                            <p style="margin: 20px 0 0 0; color: #0e7490; font-size: 14px; line-height: 1.7; font-weight: 500;">
+                                kontakt@izenic.com
                             </p>
-                            <p style="margin: 20px 0 0 0; color: #cbd5e0; font-size: 12px;">
+                            <p style="margin: 20px 0 0 0; color: #67e8f9; font-size: 12px;">
                                 Diese E-Mail wurde automatisch generiert. Bitte antworten Sie nicht auf diese E-Mail.
                             </p>
                         </td>
@@ -153,9 +154,9 @@ def _get_email_html(verify_link: str) -> str:
 
 def _get_email_text(verify_link: str) -> str:
     """Get plain text email content"""
-    return f"""Immpire - E-Mail-Verifizierung
+    return f"""IZENIC - E-Mail-Verifizierung
 
-Willkommen bei Immpire!
+Willkommen bei IZENIC!
 
 Vielen Dank für Ihre Registrierung. Um Ihr Konto zu aktivieren, bestätigen Sie bitte Ihre E-Mail-Adresse, indem Sie auf den folgenden Link klicken:
 
@@ -164,10 +165,9 @@ Vielen Dank für Ihre Registrierung. Um Ihr Konto zu aktivieren, bestätigen Sie
 WICHTIG: Dieser Link ist 1 Stunde gültig. Falls der Link abgelaufen ist, registrieren Sie sich bitte erneut.
 
 Mit freundlichen Grüßen,
-Das Immpire Team
+IZENIC
 
-Immpire
-kontakt@immpire.com
+kontakt@izenic.com
 
 Diese E-Mail wurde automatisch generiert. Bitte antworten Sie nicht auf diese E-Mail."""
 
@@ -227,7 +227,7 @@ def _send_via_sendgrid_api(to_email: str, token: str, api_key: str = None):
         message = Mail(
             from_email=from_email,
             to_emails=to_email,
-            subject="E-Mail-Verifizierung – Immpire",
+            subject="E-Mail-Verifizierung – IZENIC",
             html_content=html_content,
             plain_text_content=text_content
         )
@@ -287,7 +287,7 @@ def _send_via_smtp(to_email: str, token: str):
     
     try:
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = "E-Mail-Verifizierung – Immpire"
+        msg["Subject"] = "E-Mail-Verifizierung – IZENIC"
         # Verwende SMTP_FROM_EMAIL falls gesetzt, sonst SMTP_USER
         from_email = settings.SMTP_FROM_EMAIL.strip() if settings.SMTP_FROM_EMAIL and settings.SMTP_FROM_EMAIL.strip() else settings.SMTP_USER
         msg["From"] = from_email
