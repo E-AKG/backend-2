@@ -11,12 +11,15 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_HOURS: int = 24  # 24 Stunden für längere Sessions (kann über .env überschrieben werden)
     
-    # SMTP
-    SMTP_HOST: str
-    SMTP_PORT: int
-    SMTP_USER: str
-    SMTP_PASSWORD: str
+    # SMTP (Fallback, wenn SendGrid API nicht verwendet wird)
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: Optional[int] = None
+    SMTP_USER: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
     SMTP_FROM_EMAIL: str = ""  # Absender-E-Mail-Adresse (optional, falls nicht gesetzt wird SMTP_USER verwendet)
+    
+    # SendGrid API (bevorzugt, funktioniert besser mit Render)
+    SENDGRID_API_KEY: Optional[str] = None  # Wenn gesetzt, wird SendGrid API statt SMTP verwendet
     
     # Frontend
     FRONTEND_URL: str
