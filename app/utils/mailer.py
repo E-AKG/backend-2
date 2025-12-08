@@ -23,9 +23,18 @@ def send_verification_email(to_email: str, token: str):
     """
     # Use SendGrid API if available (better for Render)
     # Check if SENDGRID_API_KEY is set and not empty
+    # Fallback: Check if SMTP_PASSWORD looks like a SendGrid API key (starts with SG.)
+    sendgrid_key = None
     if settings.SENDGRID_API_KEY and settings.SENDGRID_API_KEY.strip():
+        sendgrid_key = settings.SENDGRID_API_KEY.strip()
+    elif settings.SMTP_PASSWORD and settings.SMTP_PASSWORD.strip().startswith('SG.'):
+        # Fallback: SMTP_PASSWORD contains SendGrid API key
+        logger.info("📧 Found SendGrid API key in SMTP_PASSWORD, using SendGrid API")
+        sendgrid_key = settings.SMTP_PASSWORD.strip()
+    
+    if sendgrid_key:
         logger.info("📧 Using SendGrid API (preferred method)")
-        return _send_via_sendgrid_api(to_email, token)
+        return _send_via_sendgrid_api(to_email, token, sendgrid_key)
     else:
         logger.warning("⚠️ SENDGRID_API_KEY not set, falling back to SMTP")
         return _send_via_smtp(to_email, token)
@@ -163,13 +172,40 @@ kontakt@immpire.com
 Diese E-Mail wurde automatisch generiert. Bitte antworten Sie nicht auf diese E-Mail."""
 
 
-def _send_via_sendgrid_api(to_email: str, token: str):
+def _send_via_sendgrid_api(to_email: str, token: str, api_key: str = None):
     """Send email using SendGrid API (preferred method)"""
     try:
         from sendgrid import SendGridAPIClient
         from sendgrid.helpers.mail import Mail
         
+        # Use provided API key or fall back to settings
+        sendgrid_api_key = api_key or settings.SENDGRID_API_KEY
+        
+        # Debug: Check if API key is set (without logging the actual key)
+        if not sendgrid_api_key:
+            logger.error("❌ SendGrid API key is None or empty")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="SendGrid API key is not configured."
+            )
+        
+        # Check if API key looks valid (starts with SG. and has reasonable length)
+        if not sendgrid_api_key.strip().startswith('SG.'):
+            logger.error(f"❌ SendGrid API key does not start with 'SG.' (starts with: {sendgrid_api_key[:5] if len(sendgrid_api_key) > 5 else 'too short'}...)")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="SendGrid API key format is invalid. It should start with 'SG.'"
+            )
+        
+        if len(sendgrid_api_key.strip()) < 50:
+            logger.error(f"❌ SendGrid API key seems too short (length: {len(sendgrid_api_key.strip())})")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="SendGrid API key seems invalid (too short)."
+            )
+        
         logger.info(f"📧 Sending verification email via SendGrid API to: {to_email}")
+        logger.info(f"🔑 Using SendGrid API key (length: {len(sendgrid_api_key.strip())}, starts with: {sendgrid_api_key.strip()[:5]}...)")
         
         verify_link = _get_verification_link(token)
         logger.info(f"🔗 Verifizierungs-Link: {verify_link}")
@@ -190,7 +226,7 @@ def _send_via_sendgrid_api(to_email: str, token: str):
         )
         
         # Send via SendGrid API
-        sg = SendGridAPIClient(settings.SENDGRID_API_KEY)
+        sg = SendGridAPIClient(sendgrid_api_key)
         response = sg.send(message)
         
         logger.info(f"✅ Verification email sent successfully via SendGrid API to {to_email} (Status: {response.status_code})")
@@ -202,8 +238,26 @@ def _send_via_sendgrid_api(to_email: str, token: str):
             detail="SendGrid library not installed. Please install sendgrid package."
         )
     except Exception as e:
-        logger.error(f"❌ SendGrid API error: {str(e)}")
-        logger.error(f"❌ Error type: {type(e).__name__}")
+        error_msg = str(e)
+        error_type = type(e).__name__
+        logger.error(f"❌ SendGrid API error: {error_msg}")
+        logger.error(f"❌ Error type: {error_type}")
+        
+        # Provide more specific error messages
+        if "401" in error_msg or "Unauthorized" in error_msg or "UnauthorizedError" in error_type:
+            logger.error("❌ SendGrid API Key is invalid or missing permissions")
+            logger.error("💡 Solution: Create a new API Key in SendGrid with 'Full Access' or 'Mail Send' permissions")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="SendGrid API authentication failed. Please check your API key configuration."
+            )
+        elif "403" in error_msg or "Forbidden" in error_msg:
+            logger.error("❌ SendGrid API Key lacks required permissions")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="SendGrid API key does not have required permissions. Please ensure it has 'Mail Send' access."
+            )
+        
         import traceback
         logger.error(f"❌ Traceback: {traceback.format_exc()}")
         raise HTTPException(
