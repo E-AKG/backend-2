@@ -7,6 +7,7 @@ from ..models.user import User
 from ..schemas.user_schema import UserCreate, UserLogin, TokenResponse
 from ..utils.jwt_handler import create_token, decode_token
 from ..utils.mailer import send_verification_email
+from ..config import settings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -277,7 +278,7 @@ def _success_html(title: str, message: str) -> str:
             </div>
             <h1>{title}</h1>
             <p>{message}</p>
-            <a href="http://localhost:5173/login" class="button">Zum Login →</a>
+            <a href="{settings.FRONTEND_URL}/login" class="button">Zum Login →</a>
         </div>
     </body>
     </html>
@@ -369,7 +370,7 @@ def _error_html(title: str, message: str) -> str:
             </div>
             <h1>{title}</h1>
             <p>{message}</p>
-            <a href="http://localhost:5173/register" class="button">Zur Registrierung →</a>
+            <a href="{settings.FRONTEND_URL}/register" class="button">Zur Registrierung →</a>
         </div>
     </body>
     </html>
