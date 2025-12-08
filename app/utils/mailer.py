@@ -173,50 +173,57 @@ Diese E-Mail wurde automatisch generiert. Bitte antworten Sie nicht auf diese E-
 
 
 def _send_via_sendgrid_api(to_email: str, token: str, api_key: str = None):
-    """Send email using SendGrid API (preferred method)"""
+    """Send email using SendGrid API (preferred method) - using official SendGrid pattern"""
     try:
+        import os
         from sendgrid import SendGridAPIClient
         from sendgrid.helpers.mail import Mail
         
-        # Use provided API key or fall back to settings
-        sendgrid_api_key = api_key or settings.SENDGRID_API_KEY
+        # Get API key: use provided key, then settings, then environment variable (like SendGrid example)
+        sendgrid_api_key = api_key or settings.SENDGRID_API_KEY or os.environ.get('SENDGRID_API_KEY')
         
         # Debug: Check if API key is set (without logging the actual key)
         if not sendgrid_api_key:
             logger.error("❌ SendGrid API key is None or empty")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="SendGrid API key is not configured."
+                detail="SendGrid API key is not configured. Please set SENDGRID_API_KEY environment variable."
             )
         
         # Check if API key looks valid (starts with SG. and has reasonable length)
-        if not sendgrid_api_key.strip().startswith('SG.'):
+        sendgrid_api_key = sendgrid_api_key.strip()
+        if not sendgrid_api_key.startswith('SG.'):
             logger.error(f"❌ SendGrid API key does not start with 'SG.' (starts with: {sendgrid_api_key[:5] if len(sendgrid_api_key) > 5 else 'too short'}...)")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="SendGrid API key format is invalid. It should start with 'SG.'"
             )
         
-        if len(sendgrid_api_key.strip()) < 50:
-            logger.error(f"❌ SendGrid API key seems too short (length: {len(sendgrid_api_key.strip())})")
+        if len(sendgrid_api_key) < 50:
+            logger.error(f"❌ SendGrid API key seems too short (length: {len(sendgrid_api_key)})")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="SendGrid API key seems invalid (too short)."
             )
         
         logger.info(f"📧 Sending verification email via SendGrid API to: {to_email}")
-        logger.info(f"🔑 Using SendGrid API key (length: {len(sendgrid_api_key.strip())}, starts with: {sendgrid_api_key.strip()[:5]}...)")
+        logger.info(f"🔑 Using SendGrid API key (length: {len(sendgrid_api_key)}, starts with: {sendgrid_api_key[:5]}...)")
         
         verify_link = _get_verification_link(token)
         logger.info(f"🔗 Verifizierungs-Link: {verify_link}")
         
         from_email = settings.SMTP_FROM_EMAIL.strip() if settings.SMTP_FROM_EMAIL and settings.SMTP_FROM_EMAIL.strip() else "kontakt@izenic.com"
+        logger.info(f"📮 From email: {from_email}")
+        
+        # Check if from_email is verified in SendGrid
+        if not from_email or from_email == "kontakt@izenic.com":
+            logger.warning("⚠️ Using default from_email. Make sure 'kontakt@izenic.com' is verified in SendGrid!")
         
         # Get email content
         html_content = _get_email_html(verify_link)
         text_content = _get_email_text(verify_link)
         
-        # Create Mail object
+        # Create Mail object (exactly like SendGrid example)
         message = Mail(
             from_email=from_email,
             to_emails=to_email,
@@ -225,11 +232,15 @@ def _send_via_sendgrid_api(to_email: str, token: str, api_key: str = None):
             plain_text_content=text_content
         )
         
-        # Send via SendGrid API
+        # Send via SendGrid API (exactly like SendGrid example)
         sg = SendGridAPIClient(sendgrid_api_key)
+        # sg.set_sendgrid_data_residency("eu")  # Uncomment if using EU subuser
         response = sg.send(message)
         
-        logger.info(f"✅ Verification email sent successfully via SendGrid API to {to_email} (Status: {response.status_code})")
+        logger.info(f"✅ Verification email sent successfully via SendGrid API to {to_email}")
+        logger.info(f"📊 Response Status: {response.status_code}")
+        logger.info(f"📊 Response Body: {response.body}")
+        logger.info(f"📊 Response Headers: {response.headers}")
         
     except ImportError:
         logger.error("❌ SendGrid library not installed. Install with: pip install sendgrid")
