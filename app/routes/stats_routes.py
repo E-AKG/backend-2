@@ -20,6 +20,8 @@ router = APIRouter(prefix="/api/stats", tags=["Statistics"])
 def get_dashboard_stats(
     month: Optional[int] = Query(None, ge=1, le=12),
     year: Optional[int] = Query(None, ge=2020, le=2100),
+    client_id: Optional[str] = Query(None, description="Filter nach Mandant"),
+    fiscal_year_id: Optional[str] = Query(None, description="Filter nach Geschäftsjahr"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -38,11 +40,16 @@ def get_dashboard_stats(
         year = today.year
     
     # Hole BillRun für diesen Monat
-    bill_run = db.query(BillRun).filter(
+    bill_run_query = db.query(BillRun).filter(
         BillRun.owner_id == current_user.id,
         BillRun.period_month == month,
         BillRun.period_year == year
-    ).first()
+    )
+    if client_id:
+        bill_run_query = bill_run_query.filter(BillRun.client_id == client_id)
+    if fiscal_year_id:
+        bill_run_query = bill_run_query.filter(BillRun.fiscal_year_id == fiscal_year_id)
+    bill_run = bill_run_query.first()
     
     rent_data = {
         "erwartet": 0,
@@ -69,7 +76,7 @@ def get_dashboard_stats(
     from ..models.tenant import Tenant
     from ..models.property import Property
     
-    open_charges = db.query(
+    open_charges_query = db.query(
         Charge, Lease, Tenant, Unit, Property
     ).join(
         Charge.bill_run
@@ -84,7 +91,10 @@ def get_dashboard_stats(
     ).filter(
         BillRun.owner_id == current_user.id,
         Charge.status.in_([ChargeStatus.OPEN, ChargeStatus.PARTIALLY_PAID, ChargeStatus.OVERDUE])
-    ).order_by(
+    )
+    if client_id:
+        open_charges_query = open_charges_query.filter(Property.client_id == client_id)
+    open_charges = open_charges_query.order_by(
         Charge.due_date
     ).limit(10).all()
     
@@ -102,6 +112,88 @@ def get_dashboard_stats(
             "status": charge.status.value,
         })
     
+    # Zusätzliche Statistiken für Action-Center
+    from ..models.unit import UnitStatus
+    from ..models.lease import LeaseStatus
+    
+    # Leerstand
+    units_query = db.query(Unit).filter(Unit.owner_id == current_user.id)
+    if client_id:
+        units_query = units_query.filter(Unit.client_id == client_id)
+    total_units = units_query.count()
+    
+    vacant_units_query = db.query(Unit).filter(
+        Unit.owner_id == current_user.id,
+        Unit.status == UnitStatus.VACANT
+    )
+    if client_id:
+        vacant_units_query = vacant_units_query.filter(Unit.client_id == client_id)
+    vacant_units = vacant_units_query.count()
+    vacancy_rate = int((vacant_units / total_units * 100) if total_units > 0 else 0)
+    
+    # Aktive Verträge
+    active_leases_query = db.query(Lease).filter(
+        Lease.owner_id == current_user.id,
+        Lease.status == LeaseStatus.ACTIVE
+    )
+    if client_id:
+        active_leases_query = active_leases_query.filter(Lease.client_id == client_id)
+    active_leases = active_leases_query.count()
+    
+    # Überfällige Posten
+    today = date.today()
+    overdue_charges_query = db.query(Charge).join(Lease).join(Unit).join(Property).filter(
+        Property.owner_id == current_user.id,
+        Charge.status.in_([ChargeStatus.OPEN, ChargeStatus.PARTIALLY_PAID, ChargeStatus.OVERDUE]),
+        Charge.due_date < today
+    )
+    if client_id:
+        overdue_charges_query = overdue_charges_query.filter(Property.client_id == client_id)
+    overdue_charges = overdue_charges_query.count()
+    
+    # To-Dos (vereinfacht - später erweitern)
+    todos = []
+    
+    # To-Do: Überfällige Posten
+    if overdue_charges > 0:
+        todos.append({
+            "id": "overdue_charges",
+            "type": "urgent",
+            "title": f"{overdue_charges} überfällige Posten",
+            "description": "Es gibt Zahlungen, die bereits überfällig sind",
+            "action_url": "/finanzen?filter=overdue",
+            "priority": "high"
+        })
+    
+    # To-Do: Leerstand
+    if vacancy_rate > 10:
+        todos.append({
+            "id": "high_vacancy",
+            "type": "warning",
+            "title": f"Leerstand: {vacancy_rate}%",
+            "description": f"{vacant_units} von {total_units} Einheiten sind leer",
+            "action_url": "/verwaltung?filter=vacant",
+            "priority": "medium"
+        })
+    
+    # Aktivitäts-Feed (vereinfacht - letzte 10 Aktivitäten)
+    activities = []
+    
+    # Letzte Zahlungen (aus PaymentMatches)
+    recent_payments = db.query(PaymentMatch).join(Charge).join(Lease).join(Unit).join(Property).filter(
+        Property.owner_id == current_user.id
+    ).order_by(PaymentMatch.created_at.desc()).limit(5).all()
+    
+    for payment in recent_payments:
+        activities.append({
+            "id": f"payment_{payment.id}",
+            "type": "payment",
+            "title": f"Zahlung erhalten: {float(payment.matched_amount):.2f} €",
+            "description": f"Zuordnung zu {payment.charge.lease.tenant.first_name} {payment.charge.lease.tenant.last_name}",
+            "timestamp": payment.created_at.isoformat() if payment.created_at else None,
+            "icon": "payment"
+        })
+    
     return {
         "rent_overview": rent_data,
         "period": {"month": month, "year": year},
@@ -111,6 +203,24 @@ def get_dashboard_stats(
         "total_paid": rent_data["bezahlt"],
         "total_outstanding": rent_data["offen"],
         "payment_rate": rent_data["prozent"],
+        # Action-Center KPIs
+        "kpis": {
+            "open_charges": {
+                "count": len(offene_posten),
+                "amount": rent_data["offen"],
+                "overdue": overdue_charges,
+                "status": "warning" if overdue_charges > 0 else "ok"
+            },
+            "vacancy": {
+                "rate": vacancy_rate,
+                "count": vacant_units,
+                "total": total_units,
+                "status": "warning" if vacancy_rate > 10 else "ok"
+            },
+            "active_leases": active_leases
+        },
+        "todos": todos,
+        "activities": activities
     }
 
 

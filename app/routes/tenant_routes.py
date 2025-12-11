@@ -111,6 +111,146 @@ def get_tenant(
     return TenantOut.model_validate(tenant)
 
 
+@router.get("/{tenant_id}/crm")
+def get_tenant_crm(
+    tenant_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Erweiterte CRM-Ansicht für einen Mieter
+    Inkludiert: Verträge, Zahlungen, Offene Posten, Timeline
+    """
+    tenant = db.query(Tenant).filter(
+        Tenant.id == tenant_id,
+        Tenant.owner_id == current_user.id
+    ).first()
+    
+    if not tenant:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tenant not found"
+        )
+    
+    from ..models.lease import Lease, LeaseStatus
+    from ..models.unit import Unit
+    from ..models.property import Property
+    from ..models.billrun import Charge, ChargeStatus
+    from ..models.bank import PaymentMatch
+    
+    # Aktive und historische Verträge
+    leases = db.query(Lease).filter(
+        Lease.tenant_id == tenant_id
+    ).order_by(Lease.start_date.desc()).all()
+    
+    leases_data = []
+    for lease in leases:
+        unit = db.query(Unit).filter(Unit.id == lease.unit_id).first()
+        property_obj = db.query(Property).filter(Property.id == unit.property_id).first() if unit else None
+        
+        leases_data.append({
+            "id": lease.id,
+            "start_date": lease.start_date.isoformat() if lease.start_date else None,
+            "end_date": lease.end_date.isoformat() if lease.end_date else None,
+            "status": lease.status.value,
+            "unit": {
+                "id": unit.id if unit else None,
+                "label": unit.unit_label if unit else None,
+                "property": {
+                    "id": property_obj.id if property_obj else None,
+                    "name": property_obj.name if property_obj else None,
+                    "address": property_obj.address if property_obj else None,
+                } if property_obj else None
+            } if unit else None,
+            "components": [
+                {
+                    "type": comp.type.value,
+                    "amount": float(comp.amount),
+                    "description": comp.description
+                }
+                for comp in lease.components
+            ]
+        })
+    
+    # Offene Posten
+    open_charges = db.query(Charge).join(Lease).filter(
+        Lease.tenant_id == tenant_id,
+        Charge.status.in_([ChargeStatus.OPEN, ChargeStatus.PARTIALLY_PAID, ChargeStatus.OVERDUE])
+    ).order_by(Charge.due_date).all()
+    
+    charges_data = []
+    total_open = 0
+    for charge in open_charges:
+        open_amount = float(charge.amount - charge.paid_amount)
+        total_open += open_amount
+        charges_data.append({
+            "id": charge.id,
+            "amount": float(charge.amount),
+            "paid": float(charge.paid_amount),
+            "open": open_amount,
+            "due_date": charge.due_date.isoformat() if charge.due_date else None,
+            "status": charge.status.value,
+            "description": charge.description
+        })
+    
+    # Zahlungshistorie (letzte 20)
+    payment_matches = db.query(PaymentMatch).join(Charge).join(Lease).filter(
+        Lease.tenant_id == tenant_id
+    ).order_by(PaymentMatch.created_at.desc()).limit(20).all()
+    
+    payments_data = []
+    for pm in payment_matches:
+        payments_data.append({
+            "id": pm.id,
+            "amount": float(pm.matched_amount),
+            "date": pm.created_at.isoformat() if pm.created_at else None,
+            "is_automatic": pm.is_automatic,
+            "charge_id": pm.charge_id
+        })
+    
+    # Timeline (vereinfacht - später erweitern)
+    timeline = []
+    
+    # Verträge zur Timeline hinzufügen
+    for lease in leases:
+        timeline.append({
+            "id": f"lease_{lease.id}",
+            "type": "lease",
+            "title": f"Vertrag {'gestartet' if lease.status == LeaseStatus.ACTIVE else 'beendet'}",
+            "date": lease.start_date.isoformat() if lease.start_date else None,
+            "description": f"Vertrag für {lease.unit.unit_label if lease.unit else 'unbekannt'}"
+        })
+    
+    # Zahlungen zur Timeline hinzufügen
+    for payment in payments_data:
+        timeline.append({
+            "id": f"payment_{payment['id']}",
+            "type": "payment",
+            "title": f"Zahlung erhalten: {payment['amount']:.2f} €",
+            "date": payment['date'],
+            "description": "Zahlung zugeordnet"
+        })
+    
+    # Sortiere Timeline nach Datum
+    timeline.sort(key=lambda x: x['date'] or '', reverse=True)
+    
+    return {
+        "tenant": TenantOut.model_validate(tenant),
+        "leases": leases_data,
+        "open_charges": {
+            "items": charges_data,
+            "total": total_open,
+            "count": len(charges_data)
+        },
+        "payments": {
+            "items": payments_data,
+            "total": sum(float(p['amount']) for p in payments_data),
+            "count": len(payments_data)
+        },
+        "timeline": timeline[:50]  # Limit auf 50 Einträge
+    }
+
+
 @router.put("/{tenant_id}", response_model=TenantOut)
 def update_tenant(
     tenant_id: str,
