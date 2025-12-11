@@ -51,7 +51,7 @@ class Accounting(Base, TimestampMixin):
     generated_at = Column(Date, nullable=True)  # Wann generiert
     
     # Zusätzliche Daten (JSON für flexible Struktur)
-    metadata = Column(JSONB, default=dict)  # Zusätzliche Infos (z.B. Umlageschlüssel)
+    meta_data = Column(JSONB, default=dict)  # Zusätzliche Infos (z.B. Umlageschlüssel) - umbenannt von 'metadata' (reserviert in SQLAlchemy)
     notes = Column(Text, nullable=True)
     
     # Relationships
