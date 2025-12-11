@@ -14,6 +14,7 @@ class Unit(Base, TimestampMixin):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    client_id = Column(String, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
     property_id = Column(String, ForeignKey("properties.id", ondelete="CASCADE"), nullable=False, index=True)
     unit_label = Column(String(100), nullable=False)
     floor = Column(Integer, nullable=True)
@@ -23,6 +24,7 @@ class Unit(Base, TimestampMixin):
     # Relationships
     property = relationship("Property", back_populates="units")
     owner = relationship("User", foreign_keys=[owner_id])
+    client = relationship("Client", foreign_keys=[client_id])
     leases = relationship("Lease", back_populates="unit", cascade="all, delete-orphan")
 
     __table_args__ = (

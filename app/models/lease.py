@@ -22,6 +22,8 @@ class Lease(Base, TimestampMixin):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    client_id = Column(String, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    fiscal_year_id = Column(String, ForeignKey("fiscal_years.id", ondelete="SET NULL"), nullable=True, index=True)
     unit_id = Column(String, ForeignKey("units.id", ondelete="CASCADE"), nullable=False, index=True)
     tenant_id = Column(String, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     start_date = Column(Date, nullable=False)
@@ -31,6 +33,8 @@ class Lease(Base, TimestampMixin):
 
     # Relationships
     owner = relationship("User", foreign_keys=[owner_id])
+    client = relationship("Client", foreign_keys=[client_id])
+    fiscal_year = relationship("FiscalYear", foreign_keys=[fiscal_year_id])
     unit = relationship("Unit", back_populates="leases")
     tenant = relationship("Tenant", back_populates="leases")
     components = relationship("LeaseComponent", back_populates="lease", cascade="all, delete-orphan")
