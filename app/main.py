@@ -4,7 +4,7 @@ from .db import Base, engine
 from .routes import (
     auth_routes, client_routes, property_routes, unit_routes, tenant_routes, lease_routes,
     billrun_routes, bank_routes, stats_routes, subscription_routes, payment_routes, search_routes,
-    meter_routes, key_routes, reminder_routes, accounting_routes
+    meter_routes, key_routes, reminder_routes, accounting_routes, cashbook_routes, ticket_routes, document_routes
     # FinAPI temporär auskommentiert
     # finapi_webform_routes
 )
@@ -103,6 +103,9 @@ app.include_router(meter_routes.router)
 app.include_router(key_routes.router)
 app.include_router(reminder_routes.router)
 app.include_router(accounting_routes.router)
+app.include_router(cashbook_routes.router)
+app.include_router(ticket_routes.router)
+app.include_router(document_routes.router)
 # FinAPI temporär auskommentiert
 # app.include_router(finapi_webform_routes.router)
 # app.include_router(finapi_routes.router)
