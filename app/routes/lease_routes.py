@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from typing import Optional, List
 from decimal import Decimal
+from datetime import date
 from ..db import get_db
 from ..models.user import User
 from ..models.lease import Lease, LeaseComponent, LeaseStatus, RentAdjustment
