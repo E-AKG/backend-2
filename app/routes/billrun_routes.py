@@ -93,6 +93,8 @@ def generate_bill_run(
         # Erstelle BillRun
         bill_run = BillRun(
             owner_id=current_user.id,
+            client_id=request.client_id if hasattr(request, 'client_id') and request.client_id else None,
+            fiscal_year_id=request.fiscal_year_id if hasattr(request, 'fiscal_year_id') and request.fiscal_year_id else None,
             period_month=request.period_month,
             period_year=request.period_year,
             description=request.description,
@@ -102,10 +104,16 @@ def generate_bill_run(
         db.flush()  # Um ID zu bekommen
         
         # Hole alle aktiven Verträge des Benutzers
-        active_leases = db.query(Lease).filter(
+        active_leases_query = db.query(Lease).filter(
             Lease.owner_id == current_user.id,
             Lease.status == LeaseStatus.ACTIVE
-        ).all()
+        )
+        
+        # Filter nach client_id falls vorhanden
+        if hasattr(request, 'client_id') and request.client_id:
+            active_leases_query = active_leases_query.filter(Lease.client_id == request.client_id)
+        
+        active_leases = active_leases_query.all()
         
         logger.info(f"🔍 Found {len(active_leases)} active leases for user {current_user.id}")
         
