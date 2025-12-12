@@ -4,7 +4,8 @@ from .db import Base, engine
 from .routes import (
     auth_routes, client_routes, client_settings_routes, property_routes, unit_routes, tenant_routes, lease_routes,
     billrun_routes, bank_routes, stats_routes, subscription_routes, payment_routes, search_routes,
-    meter_routes, key_routes, reminder_routes, accounting_routes, cashbook_routes, ticket_routes, document_routes
+    meter_routes, key_routes, reminder_routes, accounting_routes, cashbook_routes, ticket_routes, document_routes,
+    owner_routes, service_provider_routes
     # FinAPI temporär auskommentiert
     # finapi_webform_routes
 )
@@ -13,7 +14,7 @@ from .config import settings
 import logging
 
 # Import models to ensure they are registered with Base
-from .models import user, client, client_settings, fiscal_year, property, unit, tenant, lease, billrun, bank, auto_match_log, subscription, payment, meter, key, reminder, accounting, cashbook, ticket, document
+from .models import user, client, client_settings, fiscal_year, property, unit, tenant, lease, billrun, bank, auto_match_log, subscription, payment, meter, key, reminder, accounting, cashbook, ticket, document, owner, service_provider
 # FinAPI temporär auskommentiert - Models bleiben erhalten
 
 # Configure logging
@@ -107,6 +108,8 @@ app.include_router(accounting_routes.router)
 app.include_router(cashbook_routes.router)
 app.include_router(ticket_routes.router)
 app.include_router(document_routes.router)
+app.include_router(owner_routes.router)
+app.include_router(service_provider_routes.router)
 # FinAPI temporär auskommentiert
 # app.include_router(finapi_webform_routes.router)
 # app.include_router(finapi_routes.router)
