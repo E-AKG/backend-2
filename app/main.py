@@ -13,7 +13,7 @@ from .config import settings
 import logging
 
 # Import models to ensure they are registered with Base
-from .models import user, client, fiscal_year, property, unit, tenant, lease, billrun, bank, auto_match_log, subscription, payment, meter, key, reminder, accounting
+from .models import user, client, fiscal_year, property, unit, tenant, lease, billrun, bank, auto_match_log, subscription, payment, meter, key, reminder, accounting, cashbook, ticket, document
 # FinAPI temporär auskommentiert - Models bleiben erhalten
 
 # Configure logging
