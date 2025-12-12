@@ -17,7 +17,8 @@ class Tenant(Base, TimestampMixin):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    client_id = Column(String, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    # TODO: Uncomment after database migration adds client_id column
+    # client_id = Column(String, ForeignKey("clients.id", ondelete="CASCADE"), nullable=True, index=True)
     first_name = Column(String(100), nullable=False)
     last_name = Column(String(100), nullable=False)
     email = Column(String(255), nullable=True)
@@ -33,7 +34,8 @@ class Tenant(Base, TimestampMixin):
 
     # Relationships
     owner = relationship("User", foreign_keys=[owner_id])
-    client = relationship("Client", foreign_keys=[client_id])
+    # TODO: Uncomment after database migration
+    # client = relationship("Client", foreign_keys=[client_id])
     leases = relationship("Lease", back_populates="tenant", cascade="all, delete-orphan")
 
     __table_args__ = (
