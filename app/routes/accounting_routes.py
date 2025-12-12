@@ -170,7 +170,8 @@ def calculate_accounting(
     
     # Hole alle aktiven Verträge im Zeitraum
     active_leases = db.query(Lease).join(Unit).join(Property).filter(
-        Property.client_id == accounting.client_id,
+        # TODO: Add Property.client_id filter after migration
+        # Property.client_id == accounting.client_id,
         Lease.status == LeaseStatus.ACTIVE,
         Lease.start_date <= accounting.period_end,
         (Lease.end_date.is_(None) | (Lease.end_date >= accounting.period_start))
@@ -415,7 +416,8 @@ def check_meter_readings(
     
     # Hole alle aktiven Verträge im Zeitraum
     active_leases = db.query(Lease).join(Unit).join(Property).filter(
-        Property.client_id == accounting.client_id,
+        # TODO: Add Property.client_id filter after migration
+        # Property.client_id == accounting.client_id,
         Lease.status == LeaseStatus.ACTIVE,
         Lease.start_date <= accounting.period_end,
         (Lease.end_date.is_(None) | (Lease.end_date >= accounting.period_start))

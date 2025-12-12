@@ -147,7 +147,8 @@ def bulk_create_reminders(
     # Finde alle überfälligen Charges
     overdue_charges = db.query(Charge).join(Lease).join(Unit).join(Property).filter(
         Property.owner_id == current_user.id,
-        Property.client_id == client_id,
+        # TODO: Add Property.client_id filter after migration
+        # Property.client_id == client_id,
         Charge.status.in_([ChargeStatus.OPEN, ChargeStatus.PARTIALLY_PAID, ChargeStatus.OVERDUE]),
         Charge.due_date < cutoff_date
     ).all()

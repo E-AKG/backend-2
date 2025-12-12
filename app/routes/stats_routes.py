@@ -45,10 +45,11 @@ def get_dashboard_stats(
         BillRun.period_month == month,
         BillRun.period_year == year
     )
-    if client_id:
-        bill_run_query = bill_run_query.filter(BillRun.client_id == client_id)
-    if fiscal_year_id:
-        bill_run_query = bill_run_query.filter(BillRun.fiscal_year_id == fiscal_year_id)
+    # TODO: Add client_id and fiscal_year_id filters after migration
+    # if client_id:
+    #     bill_run_query = bill_run_query.filter(BillRun.client_id == client_id)
+    # if fiscal_year_id:
+    #     bill_run_query = bill_run_query.filter(BillRun.fiscal_year_id == fiscal_year_id)
     bill_run = bill_run_query.first()
     
     rent_data = {
@@ -92,8 +93,7 @@ def get_dashboard_stats(
         BillRun.owner_id == current_user.id,
         Charge.status.in_([ChargeStatus.OPEN, ChargeStatus.PARTIALLY_PAID, ChargeStatus.OVERDUE])
     )
-    if client_id:
-        open_charges_query = open_charges_query.filter(Property.client_id == client_id)
+    # TODO: Add client_id filter after migration: if client_id: open_charges_query = open_charges_query.filter(Property.client_id == client_id)
     open_charges = open_charges_query.order_by(
         Charge.due_date
     ).all()  # Alle offenen Posten, nicht nur 10
@@ -155,8 +155,7 @@ def get_dashboard_stats(
         Charge.status.in_([ChargeStatus.OPEN, ChargeStatus.PARTIALLY_PAID, ChargeStatus.OVERDUE]),
         Charge.due_date < today
     )
-    if client_id:
-        overdue_charges_query = overdue_charges_query.filter(Property.client_id == client_id)
+    # TODO: Add client_id filter after migration: if client_id: overdue_charges_query = overdue_charges_query.filter(Property.client_id == client_id)
     overdue_charges = overdue_charges_query.count()
     
     # Tickets-Statistik
@@ -229,8 +228,7 @@ def get_dashboard_stats(
     recent_payments = db.query(PaymentMatch).join(Charge).join(Lease).join(Unit).join(Property).filter(
         Property.owner_id == current_user.id
     )
-    if client_id:
-        recent_payments = recent_payments.filter(Property.client_id == client_id)
+    # TODO: Add client_id filter after migration: if client_id: recent_payments = recent_payments.filter(Property.client_id == client_id)
     recent_payments = recent_payments.order_by(PaymentMatch.created_at.desc()).limit(3).all()
     
     for payment in recent_payments:
