@@ -13,6 +13,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+# Initialize password context with bcrypt
+# Note: If bcrypt version compatibility issues occur, this will fail at startup
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
