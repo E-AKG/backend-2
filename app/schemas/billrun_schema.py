@@ -108,4 +108,6 @@ class BillRunGenerateRequest(BaseModel):
     period_month: int = Field(..., ge=1, le=12)
     period_year: int = Field(..., ge=2020, le=2100)
     description: Optional[str] = Field(None, max_length=500)
+    client_id: Optional[str] = Field(None, description="Mandant ID")
+    fiscal_year_id: Optional[str] = Field(None, description="Geschäftsjahr ID")
 
