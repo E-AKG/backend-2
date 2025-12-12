@@ -42,7 +42,8 @@ class Client(Base, TimestampMixin):
     # Relationships
     owner = relationship("User", foreign_keys=[owner_id])
     fiscal_years = relationship("FiscalYear", back_populates="client", cascade="all, delete-orphan")
-    properties = relationship("Property", back_populates="client", cascade="all, delete-orphan")
+    # TODO: Uncomment after database migration adds client_id column to properties
+    # properties = relationship("Property", back_populates="client", cascade="all, delete-orphan")
     
     __table_args__ = (
         Index('ix_clients_owner_name', 'owner_id', 'name'),
