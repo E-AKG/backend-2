@@ -46,20 +46,12 @@ def spotlight_search(
     # Filter für Mandant
     filters = []
     if client_id:
-        # TODO: Add Property.client_id filter after migration
+        # TODO: Add client_id filters after migration
         # filters.append(Property.client_id == client_id)
-        try:
-            filters.append(Unit.client_id == client_id)
-        except:
-            pass
-        try:
-            filters.append(Tenant.client_id == client_id)
-        except:
-            pass
-        try:
-            filters.append(Lease.client_id == client_id)
-        except:
-            pass
+        # filters.append(Unit.client_id == client_id)
+        # filters.append(Tenant.client_id == client_id)
+        # filters.append(Lease.client_id == client_id)
+        pass
     
     # 1. Objekte suchen
     properties_query = db.query(Property).filter(
@@ -90,8 +82,9 @@ def spotlight_search(
             func.lower(Property.name).like(search_term)
         )
     )
-    if client_id:
-        units_query = units_query.filter(Unit.client_id == client_id)
+    # TODO: Add client_id filter after migration
+    # if client_id:
+    #     units_query = units_query.filter(Unit.client_id == client_id)
     
     units = units_query.limit(5).all()
     for unit in units:
@@ -114,8 +107,9 @@ def spotlight_search(
             func.lower(Tenant.phone).like(search_term)
         )
     )
-    if client_id:
-        tenants_query = tenants_query.filter(Tenant.client_id == client_id)
+    # TODO: Add client_id filter after migration
+    # if client_id:
+    #     tenants_query = tenants_query.filter(Tenant.client_id == client_id)
     
     tenants = tenants_query.limit(5).all()
     for tenant in tenants:
@@ -216,21 +210,16 @@ def quick_stats(
     
     # Anzahl Einheiten
     units_query = db.query(Unit).filter(Unit.owner_id == current_user.id)
-    if client_id:
-        # Prüfe ob Spalte existiert - falls nicht, wird Filter ignoriert
-        try:
-            units_query = units_query.filter(Unit.client_id == client_id)
-        except:
-            pass
+    # TODO: Add client_id filter after migration
+    # if client_id:
+    #     units_query = units_query.filter(Unit.client_id == client_id)
     units_count = units_query.count()
     
     # Anzahl Mieter
     tenants_query = db.query(Tenant).filter(Tenant.owner_id == current_user.id)
-    if client_id:
-        try:
-            tenants_query = tenants_query.filter(Tenant.client_id == client_id)
-        except:
-            pass
+    # TODO: Add client_id filter after migration
+    # if client_id:
+    #     tenants_query = tenants_query.filter(Tenant.client_id == client_id)
     tenants_count = tenants_query.count()
     
     # Anzahl aktive Verträge
@@ -239,11 +228,9 @@ def quick_stats(
         Lease.owner_id == current_user.id,
         Lease.status == LeaseStatus.ACTIVE
     )
-    if client_id:
-        try:
-            leases_query = leases_query.filter(Lease.client_id == client_id)
-        except:
-            pass
+    # TODO: Add client_id filter after migration
+    # if client_id:
+    #     leases_query = leases_query.filter(Lease.client_id == client_id)
     active_leases_count = leases_query.count()
     
     # Leerstand
