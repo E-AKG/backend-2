@@ -96,12 +96,20 @@ def get_dashboard_stats(
         open_charges_query = open_charges_query.filter(Property.client_id == client_id)
     open_charges = open_charges_query.order_by(
         Charge.due_date
-    ).limit(10).all()
+    ).all()  # Alle offenen Posten, nicht nur 10
     
     offene_posten = []
     for charge, lease, tenant, unit, prop in open_charges:
+        # Prüfe ob überfällig
+        is_overdue = charge.due_date < date.today() and charge.status in [ChargeStatus.OPEN, ChargeStatus.PARTIALLY_PAID]
+        status_value = "overdue" if is_overdue else charge.status.value
+        
         offene_posten.append({
             "charge_id": charge.id,
+            "tenant_id": tenant.id,
+            "lease_id": lease.id,
+            "unit_id": unit.id,
+            "property_id": prop.id,
             "mieter": f"{tenant.first_name} {tenant.last_name}",
             "einheit": unit.unit_label,
             "objekt": prop.name,
@@ -109,7 +117,7 @@ def get_dashboard_stats(
             "bezahlt": float(charge.paid_amount),
             "offen": float(charge.amount - charge.paid_amount),
             "faellig": charge.due_date.isoformat(),
-            "status": charge.status.value,
+            "status": status_value,
         })
     
     # Zusätzliche Statistiken für Action-Center
