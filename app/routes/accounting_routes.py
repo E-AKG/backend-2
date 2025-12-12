@@ -11,6 +11,7 @@ from ..models.unit import Unit
 from ..models.tenant import Tenant
 from ..models.property import Property
 from ..models.billrun import Charge
+from ..models.meter import Meter, MeterReading
 from ..utils.deps import get_current_user
 from pydantic import BaseModel
 
@@ -359,4 +360,116 @@ def get_accounting_items(
         }
         for item in items
     ]
+
+
+@router.delete("/{accounting_id}/items/{item_id}", status_code=204)
+def delete_accounting_item(
+    accounting_id: str,
+    item_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Kostenposten löschen"""
+    accounting = db.query(Accounting).filter(
+        Accounting.id == accounting_id,
+        Accounting.owner_id == current_user.id
+    ).first()
+    
+    if not accounting:
+        raise HTTPException(status_code=404, detail="Abrechnung nicht gefunden")
+    
+    item = db.query(AccountingItem).filter(
+        AccountingItem.id == item_id,
+        AccountingItem.accounting_id == accounting_id
+    ).first()
+    
+    if not item:
+        raise HTTPException(status_code=404, detail="Kostenposten nicht gefunden")
+    
+    # Aktualisiere Gesamtkosten
+    accounting.total_costs -= Decimal(str(item.amount))
+    
+    db.delete(item)
+    db.commit()
+    
+    return None
+
+
+@router.get("/{accounting_id}/meter-check")
+def check_meter_readings(
+    accounting_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Prüfe Zählerstände für Abrechnung
+    Zeigt alle Zähler mit fehlenden oder veralteten Ablesungen
+    """
+    accounting = db.query(Accounting).filter(
+        Accounting.id == accounting_id,
+        Accounting.owner_id == current_user.id
+    ).first()
+    
+    if not accounting:
+        raise HTTPException(status_code=404, detail="Abrechnung nicht gefunden")
+    
+    # Hole alle aktiven Verträge im Zeitraum
+    active_leases = db.query(Lease).join(Unit).join(Property).filter(
+        Property.client_id == accounting.client_id,
+        Lease.status == LeaseStatus.ACTIVE,
+        Lease.start_date <= accounting.period_end,
+        (Lease.end_date.is_(None) | (Lease.end_date >= accounting.period_start))
+    ).all()
+    
+    # Hole alle Zähler für diese Einheiten/Objekte
+    unit_ids = [lease.unit_id for lease in active_leases if lease.unit_id]
+    property_ids = list(set([lease.unit.property_id for lease in active_leases if lease.unit and lease.unit.property_id]))
+    
+    meters = db.query(Meter).filter(
+        Meter.client_id == accounting.client_id,
+        (
+            (Meter.unit_id.in_(unit_ids)) |
+            (Meter.property_id.in_(property_ids))
+        )
+    ).all()
+    
+    meter_status = []
+    for meter in meters:
+        # Prüfe ob Ablesung für Abrechnungszeitraum existiert
+        reading = db.query(MeterReading).filter(
+            MeterReading.meter_id == meter.id,
+            MeterReading.reading_date >= accounting.period_start,
+            MeterReading.reading_date <= accounting.period_end
+        ).order_by(MeterReading.reading_date.desc()).first()
+        
+        # Prüfe letzte Ablesung vor dem Zeitraum
+        previous_reading = db.query(MeterReading).filter(
+            MeterReading.meter_id == meter.id,
+            MeterReading.reading_date < accounting.period_start
+        ).order_by(MeterReading.reading_date.desc()).first()
+        
+        meter_status.append({
+            "meter_id": meter.id,
+            "meter_number": meter.meter_number,
+            "meter_type": meter.meter_type.value,
+            "location": meter.location,
+            "unit_label": meter.unit.unit_label if meter.unit else None,
+            "property_name": meter.property.name if meter.property else None,
+            "has_reading": reading is not None,
+            "reading_value": reading.reading_value if reading else None,
+            "reading_date": reading.reading_date.isoformat() if reading else None,
+            "previous_reading_value": previous_reading.reading_value if previous_reading else None,
+            "previous_reading_date": previous_reading.reading_date.isoformat() if previous_reading else None,
+            "needs_reading": reading is None,
+        })
+    
+    return {
+        "accounting_id": accounting_id,
+        "period_start": accounting.period_start.isoformat(),
+        "period_end": accounting.period_end.isoformat(),
+        "meters": meter_status,
+        "total_meters": len(meters),
+        "meters_with_readings": len([m for m in meter_status if m["has_reading"]]),
+        "meters_needing_readings": len([m for m in meter_status if m["needs_reading"]])
+    }
 
