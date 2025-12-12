@@ -6,8 +6,8 @@ from ..models.client import Client, ClientType
 from ..models.fiscal_year import FiscalYear
 from ..utils.deps import get_current_user
 from ..models.user import User
-from pydantic import BaseModel
-from datetime import date
+from pydantic import BaseModel, ConfigDict
+from datetime import date, datetime
 
 router = APIRouter()
 
@@ -36,6 +36,8 @@ class ClientUpdate(BaseModel):
 
 
 class ClientResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: str
     name: str
     client_type: str
@@ -45,11 +47,8 @@ class ClientResponse(BaseModel):
     address: Optional[str]
     notes: Optional[str]
     is_active: bool
-    created_at: str
-    updated_at: str
-
-    class Config:
-        from_attributes = True
+    created_at: datetime
+    updated_at: datetime
 
 
 class FiscalYearCreate(BaseModel):
@@ -68,6 +67,8 @@ class FiscalYearUpdate(BaseModel):
 
 
 class FiscalYearResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: str
     client_id: str
     year: int
@@ -76,11 +77,8 @@ class FiscalYearResponse(BaseModel):
     is_active: bool
     is_closed: bool
     opening_balance: Optional[float]
-    created_at: str
-    updated_at: str
-
-    class Config:
-        from_attributes = True
+    created_at: datetime
+    updated_at: datetime
 
 
 # ========= Client Routes =========
