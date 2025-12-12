@@ -151,7 +151,23 @@ def get_dashboard_stats(
         overdue_charges_query = overdue_charges_query.filter(Property.client_id == client_id)
     overdue_charges = overdue_charges_query.count()
     
-    # To-Dos (vereinfacht - später erweitern)
+    # Tickets-Statistik
+    from ..models.ticket import Ticket, TicketStatus, TicketPriority
+    tickets_query = db.query(Ticket).filter(Ticket.owner_id == current_user.id)
+    if client_id:
+        tickets_query = tickets_query.filter(Ticket.client_id == client_id)
+    
+    urgent_tickets = tickets_query.filter(
+        Ticket.status != TicketStatus.RESOLVED,
+        Ticket.status != TicketStatus.CLOSED,
+        Ticket.priority == TicketPriority.URGENT
+    ).count()
+    
+    open_tickets = tickets_query.filter(
+        Ticket.status.in_([TicketStatus.NEW, TicketStatus.IN_PROGRESS, TicketStatus.ASSIGNED])
+    ).count()
+    
+    # To-Dos (erweitert)
     todos = []
     
     # To-Do: Überfällige Posten
@@ -165,6 +181,28 @@ def get_dashboard_stats(
             "priority": "high"
         })
     
+    # To-Do: Dringende Tickets
+    if urgent_tickets > 0:
+        todos.append({
+            "id": "urgent_tickets",
+            "type": "urgent",
+            "title": f"{urgent_tickets} dringende Tickets",
+            "description": "Es gibt dringende Vorgänge, die Aufmerksamkeit benötigen",
+            "action_url": "/vorgaenge?filter=urgent",
+            "priority": "high"
+        })
+    
+    # To-Do: Offene Tickets
+    if open_tickets > 0:
+        todos.append({
+            "id": "open_tickets",
+            "type": "info",
+            "title": f"{open_tickets} offene Tickets",
+            "description": "Es gibt Vorgänge, die noch bearbeitet werden müssen",
+            "action_url": "/vorgaenge",
+            "priority": "medium"
+        })
+    
     # To-Do: Leerstand
     if vacancy_rate > 10:
         todos.append({
@@ -176,13 +214,16 @@ def get_dashboard_stats(
             "priority": "medium"
         })
     
-    # Aktivitäts-Feed (vereinfacht - letzte 10 Aktivitäten)
+    # Aktivitäts-Feed (erweitert - letzte 10 Aktivitäten)
     activities = []
     
     # Letzte Zahlungen (aus PaymentMatches)
     recent_payments = db.query(PaymentMatch).join(Charge).join(Lease).join(Unit).join(Property).filter(
         Property.owner_id == current_user.id
-    ).order_by(PaymentMatch.created_at.desc()).limit(5).all()
+    )
+    if client_id:
+        recent_payments = recent_payments.filter(Property.client_id == client_id)
+    recent_payments = recent_payments.order_by(PaymentMatch.created_at.desc()).limit(3).all()
     
     for payment in recent_payments:
         activities.append({
@@ -192,6 +233,18 @@ def get_dashboard_stats(
             "description": f"Zuordnung zu {payment.charge.lease.tenant.first_name} {payment.charge.lease.tenant.last_name}",
             "timestamp": payment.created_at.isoformat() if payment.created_at else None,
             "icon": "payment"
+        })
+    
+    # Letzte Tickets
+    recent_tickets = tickets_query.order_by(Ticket.created_at.desc()).limit(3).all()
+    for ticket in recent_tickets:
+        activities.append({
+            "id": f"ticket_{ticket.id}",
+            "type": "ticket",
+            "title": f"Neues Ticket: {ticket.title}",
+            "description": f"Status: {ticket.status.value}, Priorität: {ticket.priority.value}",
+            "timestamp": ticket.created_at.isoformat() if ticket.created_at else None,
+            "icon": "ticket"
         })
     
     return {
@@ -216,6 +269,14 @@ def get_dashboard_stats(
                 "count": vacant_units,
                 "total": total_units,
                 "status": "warning" if vacancy_rate > 10 else "ok"
+            },
+            "urgent_tickets": {
+                "count": urgent_tickets,
+                "status": "error" if urgent_tickets > 0 else "ok"
+            },
+            "open_tickets": {
+                "count": open_tickets,
+                "status": "warning" if open_tickets > 5 else "ok"
             },
             "active_leases": active_leases
         },
