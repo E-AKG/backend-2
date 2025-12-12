@@ -2,14 +2,16 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from typing import Optional, List
+from decimal import Decimal
 from ..db import get_db
 from ..models.user import User
-from ..models.lease import Lease, LeaseComponent, LeaseStatus
+from ..models.lease import Lease, LeaseComponent, LeaseStatus, RentAdjustment
 from ..models.unit import Unit
 from ..models.tenant import Tenant
 from ..schemas.lease_schema import (
     LeaseCreate, LeaseUpdate, LeaseOut,
-    LeaseComponentCreate, LeaseComponentUpdate, LeaseComponentOut
+    LeaseComponentCreate, LeaseComponentUpdate, LeaseComponentOut,
+    RentAdjustmentOut
 )
 from ..utils.deps import get_current_user
 import logging
@@ -371,4 +373,128 @@ def delete_lease_component(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete lease component"
         )
+
+
+@router.get("/api/lease-components/{component_id}/adjustments", response_model=List[RentAdjustmentOut])
+def list_rent_adjustments(
+    component_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Liste aller Mietanpassungen für eine Komponente"""
+    component = db.query(LeaseComponent).join(Lease).filter(
+        LeaseComponent.id == component_id,
+        Lease.owner_id == current_user.id
+    ).first()
+    
+    if not component:
+        raise HTTPException(status_code=404, detail="Komponente nicht gefunden")
+    
+    adjustments = db.query(RentAdjustment).filter(
+        RentAdjustment.component_id == component_id
+    ).order_by(RentAdjustment.adjustment_date.desc()).all()
+    
+    return [RentAdjustmentOut.model_validate(adj) for adj in adjustments]
+
+
+@router.post("/api/lease-components/{component_id}/adjust-rent")
+def adjust_rent(
+    component_id: str,
+    new_amount: Decimal = Query(..., description="Neuer Mietbetrag"),
+    adjustment_date: Optional[date] = Query(None, description="Anpassungsdatum (default: heute)"),
+    reason: Optional[str] = Query(None, description="Grund der Anpassung"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Führe Mietanpassung durch (für Staffel- oder Indexmiete)
+    """
+    from datetime import date as date_class
+    from decimal import Decimal
+    
+    component = db.query(LeaseComponent).join(Lease).filter(
+        LeaseComponent.id == component_id,
+        Lease.owner_id == current_user.id
+    ).first()
+    
+    if not component:
+        raise HTTPException(status_code=404, detail="Komponente nicht gefunden")
+    
+    if not adjustment_date:
+        adjustment_date = date_class.today()
+    
+    old_amount = component.amount
+    
+    # Erstelle Adjustment-Eintrag
+    adjustment = RentAdjustment(
+        component_id=component_id,
+        adjustment_date=adjustment_date,
+        old_amount=old_amount,
+        new_amount=new_amount,
+        adjustment_reason=reason or f"{component.adjustment_type.value} Anpassung"
+    )
+    
+    # Aktualisiere Komponente
+    component.amount = new_amount
+    
+    db.add(adjustment)
+    db.commit()
+    db.refresh(adjustment)
+    
+    return RentAdjustmentOut.model_validate(adjustment)
+
+
+@router.get("/api/leases/{lease_id}/upcoming-adjustments")
+def get_upcoming_adjustments(
+    lease_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Hole alle bevorstehenden Mietanpassungen für einen Vertrag
+    """
+    from datetime import date as date_class
+    
+    lease = db.query(Lease).filter(
+        Lease.id == lease_id,
+        Lease.owner_id == current_user.id
+    ).first()
+    
+    if not lease:
+        raise HTTPException(status_code=404, detail="Vertrag nicht gefunden")
+    
+    upcoming = []
+    today = date_class.today()
+    
+    for component in lease.components:
+        if component.adjustment_type == "staggered" and component.staggered_schedule:
+            # Prüfe Staffelmiete
+            for schedule_item in component.staggered_schedule:
+                schedule_date = date_class.fromisoformat(schedule_item.get("date"))
+                if schedule_date > today:
+                    upcoming.append({
+                        "component_id": component.id,
+                        "component_type": component.type.value,
+                        "adjustment_date": schedule_date.isoformat(),
+                        "new_amount": float(schedule_item.get("amount", 0)),
+                        "current_amount": float(component.amount),
+                        "type": "staggered"
+                    })
+        elif component.adjustment_type == "index_linked" and component.index_adjustment_date:
+            # Prüfe Indexmiete
+            if component.index_adjustment_date > today:
+                upcoming.append({
+                    "component_id": component.id,
+                    "component_type": component.type.value,
+                    "adjustment_date": component.index_adjustment_date.isoformat(),
+                    "current_amount": float(component.amount),
+                    "index_type": component.index_type,
+                    "type": "index_linked"
+                })
+    
+    return {
+        "lease_id": lease_id,
+        "upcoming_adjustments": sorted(upcoming, key=lambda x: x["adjustment_date"]),
+        "count": len(upcoming)
+    }
 
