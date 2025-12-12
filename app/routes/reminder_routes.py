@@ -267,3 +267,59 @@ def delete_reminder(
     
     return None
 
+
+@router.post("/{reminder_id}/generate-pdf")
+def generate_reminder_pdf(
+    reminder_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Generiere PDF für Mahnung
+    (Vereinfacht - in Produktion würde hier PDF-Generierung mit ReportLab oder ähnlich stattfinden)
+    """
+    reminder = db.query(Reminder).filter(
+        Reminder.id == reminder_id,
+        Reminder.owner_id == current_user.id
+    ).first()
+    
+    if not reminder:
+        raise HTTPException(status_code=404, detail="Mahnung nicht gefunden")
+    
+    # In Produktion: PDF-Generierung hier
+    # Für jetzt: Setze document_path und Status
+    reminder.document_path = f"/documents/reminder_{reminder_id}.pdf"
+    reminder.status = ReminderStatus.DRAFT  # Bleibt Entwurf bis versendet
+    
+    db.commit()
+    
+    return {
+        "status": "generated",
+        "document_path": reminder.document_path,
+        "reminder_id": reminder_id
+    }
+
+
+@router.post("/{reminder_id}/mark-sent")
+def mark_reminder_sent(
+    reminder_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Mahnung als versendet markieren"""
+    reminder = db.query(Reminder).filter(
+        Reminder.id == reminder_id,
+        Reminder.owner_id == current_user.id
+    ).first()
+    
+    if not reminder:
+        raise HTTPException(status_code=404, detail="Mahnung nicht gefunden")
+    
+    reminder.status = ReminderStatus.SENT
+    reminder.document_sent_at = date.today()
+    
+    db.commit()
+    db.refresh(reminder)
+    
+    return reminder
+
