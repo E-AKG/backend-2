@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .db import Base, engine
 from .routes import (
-    auth_routes, client_routes, property_routes, unit_routes, tenant_routes, lease_routes,
+    auth_routes, client_routes, client_settings_routes, property_routes, unit_routes, tenant_routes, lease_routes,
     billrun_routes, bank_routes, stats_routes, subscription_routes, payment_routes, search_routes,
     meter_routes, key_routes, reminder_routes, accounting_routes, cashbook_routes, ticket_routes, document_routes
     # FinAPI temporär auskommentiert
@@ -13,7 +13,7 @@ from .config import settings
 import logging
 
 # Import models to ensure they are registered with Base
-from .models import user, client, fiscal_year, property, unit, tenant, lease, billrun, bank, auto_match_log, subscription, payment, meter, key, reminder, accounting, cashbook, ticket, document
+from .models import user, client, client_settings, fiscal_year, property, unit, tenant, lease, billrun, bank, auto_match_log, subscription, payment, meter, key, reminder, accounting, cashbook, ticket, document
 # FinAPI temporär auskommentiert - Models bleiben erhalten
 
 # Configure logging
@@ -89,6 +89,7 @@ app.add_middleware(
 # Include routers
 app.include_router(auth_routes.router)
 app.include_router(client_routes.router)
+app.include_router(client_settings_routes.router)
 app.include_router(property_routes.router)
 app.include_router(unit_routes.router)
 app.include_router(tenant_routes.router)
