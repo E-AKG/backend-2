@@ -29,8 +29,9 @@ class BillRun(Base, TimestampMixin):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    client_id = Column(String, ForeignKey("clients.id", ondelete="CASCADE"), nullable=True, index=True)
-    fiscal_year_id = Column(String, ForeignKey("fiscal_years.id", ondelete="SET NULL"), nullable=True, index=True)
+    # TODO: Uncomment after database migration adds client_id and fiscal_year_id columns
+    # client_id = Column(String, ForeignKey("clients.id", ondelete="CASCADE"), nullable=True, index=True)
+    # fiscal_year_id = Column(String, ForeignKey("fiscal_years.id", ondelete="SET NULL"), nullable=True, index=True)
     
     # Abrechnungszeitraum
     period_month = Column(Integer, nullable=False)  # 1-12
@@ -51,8 +52,9 @@ class BillRun(Base, TimestampMixin):
     
     # Relationships
     owner = relationship("User", foreign_keys=[owner_id])
-    client = relationship("Client", foreign_keys=[client_id])
-    fiscal_year = relationship("FiscalYear", foreign_keys=[fiscal_year_id])
+    # TODO: Uncomment after database migration
+    # client = relationship("Client", foreign_keys=[client_id])
+    # fiscal_year = relationship("FiscalYear", foreign_keys=[fiscal_year_id])
     charges = relationship("Charge", back_populates="bill_run", cascade="all, delete-orphan")
 
     __table_args__ = (

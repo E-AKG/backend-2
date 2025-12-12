@@ -9,7 +9,8 @@ class Property(Base, TimestampMixin):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    client_id = Column(String, ForeignKey("clients.id", ondelete="CASCADE"), nullable=True, index=True)
+    # TODO: Uncomment after database migration adds client_id column
+    # client_id = Column(String, ForeignKey("clients.id", ondelete="CASCADE"), nullable=True, index=True)
     name = Column(String(255), nullable=False)
     address = Column(String(500), nullable=False)
     year_built = Column(Integer, nullable=True)
@@ -20,10 +21,12 @@ class Property(Base, TimestampMixin):
     # Relationships
     units = relationship("Unit", back_populates="property", cascade="all, delete-orphan")
     owner = relationship("User", foreign_keys=[owner_id])
-    client = relationship("Client", foreign_keys=[client_id])
+    # TODO: Uncomment after database migration
+    # client = relationship("Client", foreign_keys=[client_id])
 
     __table_args__ = (
         Index('ix_properties_owner_address', 'owner_id', 'address'),
-        Index('ix_properties_client', 'client_id'),
+        # TODO: Uncomment after database migration
+        # Index('ix_properties_client', 'client_id'),
     )
 
