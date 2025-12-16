@@ -4,19 +4,25 @@ from fastapi import HTTPException, status
 from ..config import settings
 
 
-def create_token(data: dict, expires_delta: timedelta = None):
+def create_token(data: dict, expires_delta: timedelta = None, user_type: str = None):
     """
     Create a JWT token with the given data.
     
     Args:
         data: Dictionary containing the data to encode
         expires_delta: Optional timedelta for token expiration
+        user_type: Optional user type ("portal" or "admin"/"staff") for different expiration times
     
     Returns:
         Encoded JWT token as string
     """
     if expires_delta is None:
-        expires_delta = timedelta(hours=settings.JWT_ACCESS_TOKEN_EXPIRE_HOURS)
+        # Verwende unterschiedliche Expire-Zeiten je nach User-Typ
+        if user_type == "portal":
+            expire_hours = getattr(settings, 'JWT_PORTAL_ACCESS_TOKEN_EXPIRE_HOURS', settings.JWT_ACCESS_TOKEN_EXPIRE_HOURS)
+        else:
+            expire_hours = settings.JWT_ACCESS_TOKEN_EXPIRE_HOURS
+        expires_delta = timedelta(hours=expire_hours)
     
     to_encode = data.copy()
     expire = datetime.utcnow() + expires_delta

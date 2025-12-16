@@ -387,6 +387,14 @@ def simple_match_csv(
                     if transaction.matched_amount >= transaction.amount:
                         transaction.is_matched = True
                     
+                    # Aktualisiere BillRun (Sollstellung) automatisch
+                    try:
+                        from ..routes.billrun_routes import update_bill_run_totals
+                        update_bill_run_totals(db, charge.bill_run_id)
+                    except Exception as e:
+                        logger.error(f"Fehler beim Aktualisieren der BillRun: {str(e)}")
+                        # Nicht kritisch - Charge wurde bereits aktualisiert
+                    
                     stats["matched"] += 1
                     
                     # Hole Details für Log

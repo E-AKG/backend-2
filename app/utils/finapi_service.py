@@ -252,7 +252,7 @@ class FinAPIService:
                 },
                 json={
                     "accountTypes": ["CHECKING"],
-                    "redirectUrl": "http://localhost:5173/bank?webform=success"
+                    "redirectUrl": f"{settings.FRONTEND_URL}/bank?webform=success"
                 }
             )
             
@@ -274,7 +274,7 @@ class FinAPIService:
             
             # Fallback: Lokale WebForm (da echte WebForm nicht verfügbar)
             logger.info("Using local WebForm fallback (echte FinAPI WebForm nicht verfügbar)...")
-            webform_url = f"http://localhost:5173/finapi-webform.html?accessToken={user_access_token}"
+            webform_url = f"{settings.FRONTEND_URL}/finapi-webform.html?accessToken={user_access_token}"
             
             return {
                 "url": webform_url,
