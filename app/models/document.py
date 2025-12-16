@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Date, ForeignKey, Index, Enum, Boolean, Text
+from sqlalchemy import Column, String, Integer, Date, ForeignKey, Index, Enum, Boolean, Text, DateTime, TypeDecorator
 from sqlalchemy.orm import relationship
 import enum
 from .base import Base, TimestampMixin, generate_uuid
@@ -12,7 +12,62 @@ class DocumentType(str, enum.Enum):
     STATEMENT = "statement"  # Abrechnung
     CERTIFICATE = "certificate"  # Energieausweis, etc.
     PROTOCOL = "protocol"  # Protokoll (Eigentümerversammlung)
+    BK_STATEMENT = "bk_statement"  # Betriebskostenabrechnung (Statement)
+    BK_RECEIPT = "bk_receipt"  # Betriebskosten-Beleg
     OTHER = "other"  # Sonstiges
+
+
+class DocumentStatus(str, enum.Enum):
+    """Status des Dokuments (für Portal-Veröffentlichung)"""
+    DRAFT = "draft"  # Entwurf (nicht sichtbar für Mieter)
+    PUBLISHED = "published"  # Veröffentlicht (sichtbar für Mieter)
+
+
+class EnumValueType(TypeDecorator):
+    """
+    TypeDecorator für Enums, der sicherstellt, dass der Enum-Wert (nicht der Name) verwendet wird.
+    Wichtig für PostgreSQL Enums mit create_type=False.
+    """
+    impl = String
+    cache_ok = True
+    
+    def __init__(self, enum_class, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.enum_class = enum_class
+    
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        # Wenn es ein Enum-Objekt ist, verwende den Wert
+        if isinstance(value, self.enum_class):
+            return value.value
+        # Wenn es ein String ist, prüfe ob es ein Enum-Wert oder Enum-Name ist
+        if isinstance(value, str):
+            # Prüfe zuerst, ob es ein gültiger Enum-Wert ist (lowercase)
+            try:
+                enum_val = self.enum_class(value.lower())
+                return enum_val.value
+            except ValueError:
+                # Falls nicht, könnte es ein Enum-Name sein (z.B. "BK_STATEMENT")
+                # Versuche es als Enum-Name zu interpretieren
+                try:
+                    # Suche nach einem Enum-Member mit diesem Namen
+                    for enum_member in self.enum_class:
+                        if enum_member.name == value:
+                            return enum_member.value
+                except:
+                    pass
+                # Falls nichts funktioniert, gib den Wert zurück (könnte ein Fehler sein)
+                return value.lower() if value else value
+        return value
+    
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        try:
+            return self.enum_class(value)
+        except ValueError:
+            return value
 
 
 class Document(Base, TimestampMixin):
@@ -33,9 +88,16 @@ class Document(Base, TimestampMixin):
     mime_type = Column(String(100), nullable=True)  # MIME-Type
     
     # Metadaten
-    document_type = Column(Enum(DocumentType), default=DocumentType.OTHER, nullable=False)
+    # Verwende EnumValueType, um sicherzustellen, dass der Enum-Wert (lowercase String) verwendet wird
+    # statt des Enum-Namens (wichtig für PostgreSQL Enums mit create_type=False)
+    document_type = Column(EnumValueType(DocumentType), default=DocumentType.OTHER.value, nullable=False)
     title = Column(String(255), nullable=True)  # Anzeigename
     description = Column(Text, nullable=True)
+    
+    # Portal-Veröffentlichung
+    status = Column(EnumValueType(DocumentStatus), default=DocumentStatus.DRAFT.value, nullable=False)
+    billing_year = Column(Integer, nullable=True, index=True)  # Abrechnungsjahr (z.B. 2025)
+    published_at = Column(DateTime(timezone=True), nullable=True)  # Veröffentlichungsdatum
     
     # Datum (falls relevant)
     document_date = Column(Date, nullable=True)  # Datum des Dokuments (z.B. Rechnungsdatum)

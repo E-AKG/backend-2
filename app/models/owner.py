@@ -1,6 +1,13 @@
-from sqlalchemy import Column, String, Integer, Text, ForeignKey, Index, DECIMAL
+from sqlalchemy import Column, String, Integer, Text, ForeignKey, Index, DECIMAL, Enum
 from sqlalchemy.orm import relationship
 from .base import Base, TimestampMixin, generate_uuid
+import enum
+
+
+class OwnerStatus(str, enum.Enum):
+    """Status des Eigentümers"""
+    SELF_OCCUPIED = "self_occupied"  # Selbstnutzer
+    INVESTOR = "investor"  # Kapitalanleger (vermietet weiter)
 
 
 class Owner(Base, TimestampMixin):
@@ -21,12 +28,18 @@ class Owner(Base, TimestampMixin):
     phone = Column(String(50), nullable=True)
     address = Column(String(500), nullable=True)
     
+    # Steuerliche Daten
+    tax_id = Column(String(50), nullable=True)  # Steuer-ID (für Bescheinigungen)
+    
     # Eigentumsanteile (für WEG)
     ownership_percentage = Column(DECIMAL(5, 2), nullable=True)  # z.B. 12.5 für 12,5%
     
-    # Bankdaten
-    iban = Column(String(34), nullable=True)
+    # Zahlungsverkehr
+    iban = Column(String(34), nullable=True)  # IBAN für Ausschüttungen (Mieteinnahmen) oder Lastschrift (Hausgeld)
     bank_name = Column(String(255), nullable=True)
+    
+    # Status
+    status = Column(Enum(OwnerStatus), nullable=True)  # Selbstnutzer oder Kapitalanleger
     
     # Zusätzliche Infos
     notes = Column(Text, nullable=True)

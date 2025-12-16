@@ -30,7 +30,7 @@ class Lease(Base, TimestampMixin):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    client_id = Column(String, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    client_id = Column(String, ForeignKey("clients.id", ondelete="CASCADE"), nullable=True, index=True)
     fiscal_year_id = Column(String, ForeignKey("fiscal_years.id", ondelete="SET NULL"), nullable=True, index=True)
     unit_id = Column(String, ForeignKey("units.id", ondelete="CASCADE"), nullable=False, index=True)
     tenant_id = Column(String, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -61,31 +61,33 @@ class LeaseComponent(Base, TimestampMixin):
     amount = Column(DECIMAL(10, 2), nullable=False)
     description = Column(String(255), nullable=True)
     
-    # Mietanpassung
-    adjustment_type = Column(Enum(RentAdjustmentType), default=RentAdjustmentType.FIXED, nullable=False)
-    
-    # Staffelmiete: Liste von {date, amount}
-    staggered_schedule = Column(JSONB, nullable=True)  # [{"date": "2024-01-01", "amount": 500.00}, ...]
-    
-    # Indexmiete
-    index_type = Column(String(50), nullable=True)  # z.B. "VPI", "Mietspiegel"
-    index_base_value = Column(DECIMAL(10, 2), nullable=True)  # Basiswert des Index
-    index_base_date = Column(Date, nullable=True)  # Basis-Datum
-    index_adjustment_date = Column(Date, nullable=True)  # Nächstes Anpassungsdatum
-    index_adjustment_percentage = Column(DECIMAL(5, 2), nullable=True)  # Anpassungsprozentsatz
-    
-    # Umlageschlüssel (für Betriebskosten)
-    allocation_key = Column(String(50), nullable=True)  # "area", "units", "persons", "custom"
-    allocation_factor = Column(DECIMAL(10, 4), nullable=True)  # Individueller Faktor
-    allocation_notes = Column(Text, nullable=True)  # Notizen zum Umlageschlüssel
+    # TODO: Uncomment after database migration adds these columns
+    # # Mietanpassung
+    # adjustment_type = Column(Enum(RentAdjustmentType), default=RentAdjustmentType.FIXED, nullable=False)
+    # 
+    # # Staffelmiete: Liste von {date, amount}
+    # staggered_schedule = Column(JSONB, nullable=True)  # [{"date": "2024-01-01", "amount": 500.00}, ...]
+    # 
+    # # Indexmiete
+    # index_type = Column(String(50), nullable=True)  # z.B. "VPI", "Mietspiegel"
+    # index_base_value = Column(DECIMAL(10, 2), nullable=True)  # Basiswert des Index
+    # index_base_date = Column(Date, nullable=True)  # Basis-Datum
+    # index_adjustment_date = Column(Date, nullable=True)  # Nächstes Anpassungsdatum
+    # index_adjustment_percentage = Column(DECIMAL(5, 2), nullable=True)  # Anpassungsprozentsatz
+    # 
+    # # Umlageschlüssel (für Betriebskosten)
+    # allocation_key = Column(String(50), nullable=True)  # "area", "units", "persons", "custom"
+    # allocation_factor = Column(DECIMAL(10, 4), nullable=True)  # Individueller Faktor
+    # allocation_notes = Column(Text, nullable=True)  # Notizen zum Umlageschlüssel
 
     # Relationships
     lease = relationship("Lease", back_populates="components")
-    adjustments = relationship("RentAdjustment", back_populates="component", cascade="all, delete-orphan")
+    # TODO: Uncomment after database migration
+    # adjustments = relationship("RentAdjustment", back_populates="component", cascade="all, delete-orphan")
     
-    __table_args__ = (
-        Index('ix_lease_components_adjustment_type', 'adjustment_type'),
-    )
+    # __table_args__ = (
+    #     Index('ix_lease_components_adjustment_type', 'adjustment_type'),
+    # )
 
 
 class RentAdjustment(Base, TimestampMixin):
@@ -105,7 +107,9 @@ class RentAdjustment(Base, TimestampMixin):
     notes = Column(Text, nullable=True)
     
     # Relationships
-    component = relationship("LeaseComponent", back_populates="adjustments")
+    # TODO: Uncomment back_populates after database migration adds adjustments relationship
+    # component = relationship("LeaseComponent", back_populates="adjustments")
+    component = relationship("LeaseComponent")
     
     __table_args__ = (
         Index('ix_rent_adjustments_date', 'adjustment_date'),
