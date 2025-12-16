@@ -55,12 +55,13 @@ class BankAccountOut(BaseModel):
 
 class BankTransactionCreate(BaseModel):
     """Normalerweise wird das von FinAPI automatisch erstellt"""
-    bank_account_id: str
+    bank_account_id: Optional[str] = None  # Optional für manuelle Buchungen
     transaction_date: date
     amount: Decimal
     purpose: Optional[str] = None
     counterpart_name: Optional[str] = Field(None, max_length=255)
     counterpart_iban: Optional[str] = Field(None, max_length=34)
+    description: Optional[str] = None  # Alias für purpose (wird zu purpose gemappt)
 
 
 class BankTransactionOut(BaseModel):

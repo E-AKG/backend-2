@@ -1,4 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field, field_validator
+from typing import Optional
 from datetime import datetime
 
 
@@ -35,10 +36,16 @@ class UserOut(BaseModel):
     id: int
     email: EmailStr
     is_verified: bool
+    notification_from_email: Optional[str] = None
     created_at: datetime
 
     class Config:
         from_attributes = True  # Pydantic v2 replacement for orm_mode
+
+
+class UserUpdate(BaseModel):
+    """Schema zum Aktualisieren von User-Einstellungen"""
+    notification_from_email: Optional[str] = None  # Absender-E-Mail für Benachrichtigungen
 
 
 class TokenResponse(BaseModel):

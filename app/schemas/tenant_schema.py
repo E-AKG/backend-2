@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, EmailStr, ConfigDict, field_validator
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 import re
 
@@ -7,11 +7,22 @@ import re
 class TenantCreate(BaseModel):
     first_name: str = Field(..., min_length=1, max_length=100, description="First name")
     last_name: str = Field(..., min_length=1, max_length=100, description="Last name")
-    email: Optional[EmailStr] = Field(None, description="Email address")
-    phone: Optional[str] = Field(None, max_length=50, description="Phone number")
-    iban: Optional[str] = Field(None, max_length=34, description="IBAN")
+    email: Optional[EmailStr] = Field(None, description="E-Mail für Mieterportal-Zugang")
+    phone: Optional[str] = Field(None, max_length=50, description="Telefon")
     address: Optional[str] = Field(None, max_length=500, description="Address")
     notes: Optional[str] = Field(None, description="Additional notes")
+    
+    # Alle Vertragspartner (z.B. Eheleute)
+    contract_partners: Optional[List[Dict[str, str]]] = Field(None, description="Liste aller Vertragspartner: [{'first_name': 'Maria', 'last_name': 'Mustermann'}]")
+    
+    # Bonität
+    schufa_score: Optional[int] = Field(None, ge=0, le=100, description="Schufa-Score (0-100)")
+    salary_proof_document_id: Optional[str] = Field(None, description="ID des Gehaltsnachweis-Dokuments")
+    
+    # Bankverbindung für SEPA-Lastschriftmandate
+    iban: Optional[str] = Field(None, max_length=34, description="IBAN für SEPA-Lastschriftmandate (Mieteinzug)")
+    sepa_mandate_reference: Optional[str] = Field(None, max_length=100, description="SEPA-Mandatsreferenz")
+    sepa_mandate_date: Optional[datetime] = Field(None, description="Datum des SEPA-Mandats")
     
     @field_validator('iban')
     @classmethod
@@ -38,9 +49,20 @@ class TenantUpdate(BaseModel):
     last_name: Optional[str] = Field(None, min_length=1, max_length=100)
     email: Optional[EmailStr] = None
     phone: Optional[str] = Field(None, max_length=50)
-    iban: Optional[str] = Field(None, max_length=34)
     address: Optional[str] = Field(None, max_length=500)
     notes: Optional[str] = None
+    
+    # Alle Vertragspartner
+    contract_partners: Optional[List[Dict[str, str]]] = None
+    
+    # Bonität
+    schufa_score: Optional[int] = Field(None, ge=0, le=100)
+    salary_proof_document_id: Optional[str] = None
+    
+    # Bankverbindung für SEPA
+    iban: Optional[str] = Field(None, max_length=34)
+    sepa_mandate_reference: Optional[str] = Field(None, max_length=100)
+    sepa_mandate_date: Optional[datetime] = None
     
     @field_validator('iban')
     @classmethod
@@ -68,9 +90,22 @@ class TenantOut(BaseModel):
     last_name: str
     email: Optional[str]
     phone: Optional[str]
-    iban: Optional[str]
     address: Optional[str]
     notes: Optional[str]
+    
+    # Alle Vertragspartner
+    contract_partners: Optional[List[Dict[str, Any]]] = None
+    
+    # Bonität
+    schufa_score: Optional[int] = None
+    salary_proof_document_id: Optional[str] = None
+    
+    # Bankverbindung für SEPA
+    iban: Optional[str] = None
+    sepa_mandate_reference: Optional[str] = None
+    sepa_mandate_date: Optional[datetime] = None
+    
+    # Risk Score
     risk_score: Optional[int] = None  # 0-100
     risk_level: Optional[str] = None  # "low", "medium", "high"
     risk_updated_at: Optional[datetime] = None
