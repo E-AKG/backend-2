@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 12pt;
+            line-height: 1.6;
+            margin: 40px;
+            color: #333;
+        }
+        .header {
+            text-align: right;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 20px;
+        }
+        .address-block {
+            margin-bottom: 30px;
+        }
+        .subject {
+            font-weight: bold;
+            font-size: 14pt;
+            margin: 20px 0;
+            color: #d32f2f;
+        }
+        .content {
+            margin: 20px 0;
+        }
+        .amount-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 30px 0;
+            border: 1px solid #ddd;
+        }
+        .amount-table td {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+        }
+        .amount-table .label {
+            text-align: left;
+            width: 60%;
+        }
+        .amount-table .value {
+            text-align: right;
+            font-weight: bold;
+            width: 40%;
+        }
+        .amount-table tr:last-child td {
+            border-bottom: none;
+            font-size: 14pt;
+            background-color: #f5f5f5;
+        }
+        .footer {
+            margin-top: 40px;
+            font-size: 10pt;
+            color: #666;
+            border-top: 1px solid #ddd;
+            padding-top: 20px;
+        }
+        .highlight {
+            background-color: #fff3cd;
+            padding: 15px;
+            border-left: 4px solid #ffc107;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <!-- Absender (Vermieter/Mandant) -->
+    <div class="header">
+        <p><strong>{{ client.name }}</strong></p>
+        <p>{{ client.address }}</p>
+        {% if client.email %}
+        <p>E-Mail: {{ client.email }}</p>
+        {% endif %}
+        {% if client.phone %}
+        <p>Telefon: {{ client.phone }}</p>
+        {% endif %}
+    </div>
+    
+    <!-- Empfänger (Mieter) -->
+    <div class="address-block">
+        <p><strong>{{ tenant.full_name }}</strong></p>
+        <p>{{ tenant.address }}</p>
+    </div>
+    
+    <!-- Betreff -->
+    <div class="subject">
+        <p>{{ reminder_type_label }} - {{ property.name }} - {{ unit.label }}</p>
+    </div>
+    
+    <!-- Inhalt -->
+    <div class="content">
+        <p>Sehr geehrte/r {{ tenant.first_name }} {{ tenant.last_name }},</p>
+        
+        <p>hiermit erinnern wir Sie an die ausstehende Zahlung Ihrer Miete für die Wohnung <strong>{{ unit.label }}</strong> im Objekt <strong>{{ property.name }}</strong>.</p>
+        
+        <div class="highlight">
+            <p><strong>Wichtige Informationen:</strong></p>
+            <p>Fälligkeitsdatum: <strong>{{ charge.due_date }}</strong></p>
+            <p>Mahnstufe: <strong>{{ reminder_type_label }}</strong></p>
+        </div>
+        
+        <table class="amount-table">
+            <tr>
+                <td class="label">Ursprünglicher Betrag:</td>
+                <td class="value">{{ charge.amount_formatted }}</td>
+            </tr>
+            <tr>
+                <td class="label">Bereits bezahlt:</td>
+                <td class="value">{{ charge.paid_amount_formatted }}</td>
+            </tr>
+            <tr>
+                <td class="label">Offener Betrag:</td>
+                <td class="value">{{ amount_formatted }}</td>
+            </tr>
+            {% if reminder_fee > 0 %}
+            <tr>
+                <td class="label">Mahngebühr:</td>
+                <td class="value">{{ reminder_fee_formatted }}</td>
+            </tr>
+            {% endif %}
+            <tr>
+                <td class="label"><strong>Gesamtbetrag zu zahlen:</strong></td>
+                <td class="value"><strong>{{ total_amount_formatted }}</strong></td>
+            </tr>
+        </table>
+        
+        <p>Bitte überweisen Sie den ausstehenden Betrag umgehend auf unser Konto. Bei Fragen stehen wir Ihnen gerne zur Verfügung.</p>
+        
+        {% if notes %}
+        <div class="highlight">
+            <p><strong>Hinweis:</strong></p>
+            <p>{{ notes }}</p>
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- Fußzeile -->
+    <div class="footer">
+        <p>Mit freundlichen Grüßen</p>
+        <p><strong>{{ client.name }}</strong></p>
+        <p>Datum: {{ reminder_date }}</p>
+        <p style="margin-top: 20px; font-size: 9pt; color: #999;">
+            Diese Mahnung wurde automatisch generiert. Mahnungs-ID: {{ reminder_id }}
+        </p>
+    </div>
+</body>
+</html>
+

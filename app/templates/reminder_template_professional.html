@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mahnung - {{ reminder_type_label }}</title>
+    <style>
+        /* Basis-Styling */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Arial', 'Helvetica', sans-serif;
+            font-size: 11pt;
+            line-height: 1.5;
+            color: #2c3e50;
+            background-color: #ffffff;
+            padding: 0;
+            margin: 0;
+        }
+        
+        /* Container */
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 50px;
+        }
+        
+        /* Header - Absender */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 50px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid #2c3e50;
+        }
+        
+        .header-left {
+            flex: 1;
+        }
+        
+        .header-right {
+            text-align: right;
+            flex: 1;
+        }
+        
+        .header-logo {
+            font-size: 18pt;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        
+        .header-address {
+            font-size: 10pt;
+            line-height: 1.6;
+            color: #555;
+        }
+        
+        .header-contact {
+            font-size: 9pt;
+            color: #777;
+            margin-top: 10px;
+        }
+        
+        /* Empfänger-Adresse */
+        .recipient {
+            margin-bottom: 40px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-left: 4px solid #2c3e50;
+        }
+        
+        .recipient-name {
+            font-size: 12pt;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .recipient-address {
+            font-size: 10pt;
+            color: #555;
+        }
+        
+        /* Betreff */
+        .subject {
+            margin: 30px 0;
+            padding: 15px 20px;
+            background-color: #e8f4f8;
+            border-left: 5px solid #3498db;
+            font-size: 12pt;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        /* Mahnstufe-Badge */
+        .reminder-badge {
+            display: inline-block;
+            padding: 5px 15px;
+            background-color: #e74c3c;
+            color: white;
+            font-size: 10pt;
+            font-weight: bold;
+            border-radius: 3px;
+            margin-left: 10px;
+        }
+        
+        .reminder-badge.payment_reminder {
+            background-color: #f39c12;
+        }
+        
+        .reminder-badge.first_reminder {
+            background-color: #e67e22;
+        }
+        
+        .reminder-badge.second_reminder {
+            background-color: #e74c3c;
+        }
+        
+        .reminder-badge.final_reminder {
+            background-color: #c0392b;
+        }
+        
+        .reminder-badge.legal_action {
+            background-color: #8b0000;
+        }
+        
+        /* Inhalt */
+        .content {
+            margin: 30px 0;
+        }
+        
+        .greeting {
+            margin-bottom: 20px;
+            font-size: 11pt;
+        }
+        
+        .intro-text {
+            margin-bottom: 25px;
+            font-size: 11pt;
+            line-height: 1.7;
+        }
+        
+        /* Info-Box */
+        .info-box {
+            background-color: #fff9e6;
+            border: 2px solid #ffc107;
+            border-left: 5px solid #ff9800;
+            padding: 20px;
+            margin: 25px 0;
+            border-radius: 4px;
+        }
+        
+        .info-box-title {
+            font-weight: bold;
+            font-size: 11pt;
+            color: #856404;
+            margin-bottom: 10px;
+        }
+        
+        .info-box-content {
+            font-size: 10pt;
+            color: #856404;
+            line-height: 1.6;
+        }
+        
+        /* Betragstabelle */
+        .amount-section {
+            margin: 35px 0;
+        }
+        
+        .amount-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background-color: #ffffff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .amount-table thead {
+            background-color: #2c3e50;
+            color: white;
+        }
+        
+        .amount-table th {
+            padding: 12px 15px;
+            text-align: left;
+            font-size: 10pt;
+            font-weight: bold;
+        }
+        
+        .amount-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 11pt;
+        }
+        
+        .amount-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .amount-table .label {
+            text-align: left;
+            color: #555;
+            width: 65%;
+        }
+        
+        .amount-table .value {
+            text-align: right;
+            font-weight: bold;
+            color: #2c3e50;
+            width: 35%;
+        }
+        
+        .amount-table .total-row {
+            background-color: #f8f9fa;
+            font-size: 13pt;
+            font-weight: bold;
+            border-top: 2px solid #2c3e50;
+        }
+        
+        .amount-table .total-row .label {
+            color: #2c3e50;
+        }
+        
+        .amount-table .total-row .value {
+            color: #e74c3c;
+            font-size: 14pt;
+        }
+        
+        /* Zahlungsaufforderung */
+        .payment-request {
+            background-color: #e8f5e9;
+            border-left: 5px solid #4caf50;
+            padding: 20px;
+            margin: 30px 0;
+            border-radius: 4px;
+        }
+        
+        .payment-request-title {
+            font-weight: bold;
+            font-size: 11pt;
+            color: #2e7d32;
+            margin-bottom: 10px;
+        }
+        
+        .payment-request-text {
+            font-size: 10pt;
+            color: #2e7d32;
+            line-height: 1.6;
+        }
+        
+        /* Hinweise */
+        .notes-section {
+            margin: 25px 0;
+            padding: 15px;
+            background-color: #f5f5f5;
+            border-left: 4px solid #9e9e9e;
+            font-size: 10pt;
+            color: #555;
+            font-style: italic;
+        }
+        
+        /* Fußzeile */
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 2px solid #e0e0e0;
+            font-size: 10pt;
+            color: #777;
+        }
+        
+        .footer-signature {
+            margin: 20px 0;
+        }
+        
+        .footer-company {
+            font-weight: bold;
+            font-size: 11pt;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+        
+        .footer-date {
+            margin-top: 15px;
+            color: #999;
+        }
+        
+        .footer-meta {
+            margin-top: 20px;
+            font-size: 8pt;
+            color: #aaa;
+            text-align: center;
+        }
+        
+        /* Seitenumbruch */
+        @media print {
+            .page-break {
+                page-break-after: always;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header: Absender -->
+        <div class="header">
+            <div class="header-left">
+                <div class="header-logo">{{ client.name }}</div>
+                <div class="header-address">
+                    {% if client.address %}
+                    {{ client.address }}<br>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="header-contact">
+                    {% if client.email %}
+                    E-Mail: {{ client.email }}<br>
+                    {% endif %}
+                    {% if client.phone %}
+                    Telefon: {{ client.phone }}<br>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Empfänger: Mieter -->
+        <div class="recipient">
+            <div class="recipient-name">{{ tenant.full_name }}</div>
+            <div class="recipient-address">
+                {% if tenant.address %}
+                {{ tenant.address }}
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Betreff -->
+        <div class="subject">
+            {{ reminder_type_label }}
+            <span class="reminder-badge {{ reminder_type }}">{{ reminder_type_label }}</span>
+        </div>
+        
+        <!-- Inhalt -->
+        <div class="content">
+            <!-- Anrede -->
+            <div class="greeting">
+                <p>Sehr {% if tenant.first_name %}{{ tenant.first_name }}{% else %}geehrte/r{% endif %} {{ tenant.last_name }},</p>
+            </div>
+            
+            <!-- Einleitung -->
+            <div class="intro-text">
+                <p>hiermit erinnern wir Sie an die ausstehende Zahlung Ihrer Miete für die <strong>{{ unit.label }}</strong> im Objekt <strong>{{ property.name }}</strong>{% if property.address %} ({{ property.address }}){% endif %}.</p>
+            </div>
+            
+            <!-- Info-Box: Wichtige Informationen -->
+            <div class="info-box">
+                <div class="info-box-title">📋 Wichtige Informationen</div>
+                <div class="info-box-content">
+                    <p><strong>Fälligkeitsdatum:</strong> {{ charge.due_date }}</p>
+                    <p><strong>Mahnstufe:</strong> {{ reminder_type_label }}</p>
+                    <p><strong>Mahnungsdatum:</strong> {{ reminder_date }}</p>
+                    {% if charge.description %}
+                    <p><strong>Zahlungsgrund:</strong> {{ charge.description }}</p>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Betragstabelle -->
+            <div class="amount-section">
+                <table class="amount-table">
+                    <thead>
+                        <tr>
+                            <th class="label">Position</th>
+                            <th class="value">Betrag</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="label">Ursprünglicher Rechnungsbetrag:</td>
+                            <td class="value">{{ charge.amount_formatted }}</td>
+                        </tr>
+                        {% if charge.paid_amount > 0 %}
+                        <tr>
+                            <td class="label">Bereits gezahlt:</td>
+                            <td class="value" style="color: #4caf50;">- {{ charge.paid_amount_formatted }}</td>
+                        </tr>
+                        {% endif %}
+                        <tr>
+                            <td class="label">Offener Betrag:</td>
+                            <td class="value">{{ amount_formatted }}</td>
+                        </tr>
+                        {% if reminder_fee > 0 %}
+                        <tr>
+                            <td class="label">Mahngebühr:</td>
+                            <td class="value">{{ reminder_fee_formatted }}</td>
+                        </tr>
+                        {% endif %}
+                        <tr class="total-row">
+                            <td class="label">Gesamtbetrag zu zahlen:</td>
+                            <td class="value">{{ total_amount_formatted }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Zahlungsaufforderung -->
+            <div class="payment-request">
+                <div class="payment-request-title">💳 Zahlungsaufforderung</div>
+                <div class="payment-request-text">
+                    <p>Bitte überweisen Sie den ausstehenden Betrag von <strong>{{ total_amount_formatted }}</strong> umgehend auf unser Konto.</p>
+                    <p>Bei Fragen oder Unklarheiten stehen wir Ihnen gerne zur Verfügung.</p>
+                </div>
+            </div>
+            
+            <!-- Notizen (falls vorhanden) -->
+            {% if notes %}
+            <div class="notes-section">
+                <p><strong>Hinweis:</strong></p>
+                <p>{{ notes }}</p>
+            </div>
+            {% endif %}
+        </div>
+        
+        <!-- Fußzeile -->
+        <div class="footer">
+            <div class="footer-signature">
+                <p>Mit freundlichen Grüßen</p>
+                <div class="footer-company">{{ client.name }}</div>
+            </div>
+            <div class="footer-date">
+                <p>Datum: {{ reminder_date }}</p>
+            </div>
+            <div class="footer-meta">
+                <p>Diese Mahnung wurde automatisch generiert. | Mahnungs-ID: {{ reminder_id }}</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+

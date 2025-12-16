@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Betriebskostenabrechnung - {{ tenant.full_name }}</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 40px;
+            font-size: 11pt;
+            line-height: 1.6;
+            color: #333;
+        }
+        .header {
+            text-align: right;
+            border-bottom: 3px solid #2c3e50;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24pt;
+            color: #2c3e50;
+        }
+        .recipient {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-left: 4px solid #2c3e50;
+        }
+        .title {
+            font-size: 18pt;
+            font-weight: bold;
+            margin: 20px 0;
+            color: #2c3e50;
+        }
+        .info-box {
+            background-color: #e8f4f8;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #2c3e50;
+            color: white;
+            font-weight: bold;
+        }
+        .total-row {
+            font-weight: bold;
+            background-color: #f5f5f5;
+            font-size: 13pt;
+        }
+        .settlement-amount {
+            font-size: 20pt;
+            font-weight: bold;
+            padding: 25px;
+            text-align: center;
+            margin: 30px 0;
+            border-radius: 8px;
+        }
+        .settlement-amount.positive {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 2px solid #ffc107;
+        }
+        .settlement-amount.negative {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 2px solid #17a2b8;
+        }
+        .footer {
+            margin-top: 50px;
+            font-size: 10pt;
+            color: #666;
+            border-top: 1px solid #ddd;
+            padding-top: 20px;
+        }
+        .highlight {
+            background-color: #fff3cd;
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>{{ client.name }}</h1>
+        <p>{{ client.address }}</p>
+        {% if client.email %}<p>E-Mail: {{ client.email }}</p>{% endif %}
+        {% if client.phone %}<p>Telefon: {{ client.phone }}</p>{% endif %}
+    </div>
+    
+    <div class="recipient">
+        <p><strong>{{ tenant.full_name }}</strong></p>
+        <p>{{ tenant.address }}</p>
+    </div>
+    
+    <div class="title">Betriebskostenabrechnung {{ period_start }} - {{ period_end }}</div>
+    
+    <div class="info-box">
+        <p><strong>Objekt:</strong> {{ property.name }}</p>
+        <p><strong>Einheit:</strong> {{ unit.label }}</p>
+        {% if unit.size_sqm %}<p><strong>Wohnfläche:</strong> {{ unit.size_sqm }} m²</p>{% endif %}
+    </div>
+    
+    <h3>Kostenaufstellung</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Kostenart</th>
+                <th>Beschreibung</th>
+                <th style="text-align: right;">Betrag</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td>{{ item.cost_type }}</td>
+                <td>{{ item.description }}</td>
+                <td style="text-align: right;">{{ format_currency(item.amount) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    <h3>Abrechnung</h3>
+    <table>
+        <tr>
+            <td>Anteilige Kosten:</td>
+            <td style="text-align: right; font-weight: bold;">{{ allocated_costs_formatted }}</td>
+        </tr>
+        <tr>
+            <td>Geleistete Vorauszahlungen:</td>
+            <td style="text-align: right;">{{ advance_payments_formatted }}</td>
+        </tr>
+        <tr class="total-row">
+            <td>{% if is_credit %}Guthaben{% else %}Nachzahlung{% endif %}:</td>
+            <td style="text-align: right;">{{ settlement_amount_formatted }}</td>
+        </tr>
+    </table>
+    
+    <div class="settlement-amount {% if is_credit %}negative{% else %}positive{% endif %}">
+        {% if is_credit %}
+        <p style="margin: 0;">Guthaben</p>
+        <p style="margin: 5px 0 0 0; font-size: 24pt;">{{ settlement_amount_formatted }}</p>
+        {% else %}
+        <p style="margin: 0;">Nachzahlung</p>
+        <p style="margin: 5px 0 0 0; font-size: 24pt;">{{ settlement_amount_formatted }}</p>
+        {% endif %}
+    </div>
+    
+    <div class="footer">
+        <p>Mit freundlichen Grüßen</p>
+        <p><strong>{{ client.name }}</strong></p>
+        <p>Datum: {{ format_date(date.today()) }}</p>
+        <p style="font-size: 9pt; color: #999; margin-top: 20px;">
+            Diese Abrechnung wurde automatisch generiert. Bei Fragen wenden Sie sich bitte an uns.
+        </p>
+    </div>
+</body>
+</html>
+
