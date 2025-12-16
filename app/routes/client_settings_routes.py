@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any
+from datetime import datetime
 from ..db import get_db
 from ..models.client_settings import ClientSettings
 from ..models.client import Client
 from ..utils.deps import get_current_user
 from ..models.user import User
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 import os
 import uuid
 from pathlib import Path
@@ -34,6 +35,8 @@ class ClientSettingsUpdate(BaseModel):
 
 
 class ClientSettingsResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: str
     client_id: str
     default_bank_account_id: Optional[str]
@@ -47,11 +50,8 @@ class ClientSettingsResponse(BaseModel):
     company_tax_id: Optional[str]
     company_iban: Optional[str]
     settings: Dict[str, Any]
-    created_at: str
-    updated_at: str
-
-    class Config:
-        from_attributes = True
+    created_at: datetime
+    updated_at: datetime
 
 
 # ========= Helper Functions =========
@@ -122,7 +122,7 @@ def get_client_settings(
         raise HTTPException(status_code=404, detail="Mandant nicht gefunden")
     
     settings = get_or_create_settings(client_id, current_user.id, db)
-    return settings
+    return ClientSettingsResponse.model_validate(settings)
 
 
 @router.put("/api/clients/{client_id}/settings", response_model=ClientSettingsResponse)

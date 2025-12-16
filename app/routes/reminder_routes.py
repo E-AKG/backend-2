@@ -1,14 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from ..db import get_db
 from ..models.user import User
 from ..models.reminder import Reminder, ReminderType, ReminderStatus
 from ..models.billrun import Charge, ChargeStatus
 from ..models.tenant import Tenant
 from ..utils.deps import get_current_user
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 import logging
 
 logger = logging.getLogger(__name__)
@@ -32,6 +32,8 @@ class ReminderUpdate(BaseModel):
 
 
 class ReminderResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: str
     charge_id: str
     tenant_id: str
@@ -44,11 +46,8 @@ class ReminderResponse(BaseModel):
     document_path: Optional[str]
     document_sent_at: Optional[date]
     notes: Optional[str]
-    created_at: str
-    updated_at: str
-
-    class Config:
-        from_attributes = True
+    created_at: datetime
+    updated_at: datetime
 
 
 @router.get("", response_model=List[ReminderResponse])
@@ -73,7 +72,7 @@ def list_reminders(
         query = query.filter(Reminder.status == status)
     
     reminders = query.order_by(Reminder.reminder_date.desc()).all()
-    return reminders
+    return [ReminderResponse.model_validate(r) for r in reminders]
 
 
 @router.post("", response_model=ReminderResponse, status_code=201)
@@ -126,7 +125,7 @@ def create_reminder(
     db.commit()
     db.refresh(reminder)
     
-    return reminder
+    return ReminderResponse.model_validate(reminder)
 
 
 @router.post("/bulk-create")
@@ -278,7 +277,7 @@ def update_reminder(
     db.commit()
     db.refresh(reminder)
     
-    return reminder
+    return ReminderResponse.model_validate(reminder)
 
 
 @router.get("/{reminder_id}", response_model=ReminderResponse)
@@ -472,7 +471,7 @@ def mark_reminder_sent(
     db.commit()
     db.refresh(reminder)
     
-    return reminder
+    return ReminderResponse.model_validate(reminder)
 
 
 @router.post("/upload-template")

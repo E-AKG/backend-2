@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import date
+from datetime import date, datetime
 from ..db import get_db
 from ..models.user import User
 from ..models.key import Key, KeyHistory, KeyType, KeyStatus
 from ..utils.deps import get_current_user
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 router = APIRouter(prefix="/api/keys", tags=["Keys"])
 
@@ -32,6 +32,8 @@ class KeyUpdate(BaseModel):
 
 
 class KeyResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: str
     property_id: Optional[str]
     unit_id: Optional[str]
@@ -43,14 +45,13 @@ class KeyResponse(BaseModel):
     assigned_to_id: Optional[str]
     assigned_to_name: Optional[str]
     notes: Optional[str]
-    created_at: str
-    updated_at: str
-
-    class Config:
-        from_attributes = True
+    created_at: datetime
+    updated_at: datetime
 
 
 class KeyHistoryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: str
     key_id: str
     action: str
@@ -59,10 +60,7 @@ class KeyHistoryResponse(BaseModel):
     assigned_to_id: Optional[str]
     assigned_to_name: Optional[str]
     notes: Optional[str]
-    created_at: str
-
-    class Config:
-        from_attributes = True
+    created_at: datetime
 
 
 class KeyActionRequest(BaseModel):
@@ -95,7 +93,7 @@ def list_keys(
         query = query.filter(Key.status == status)
     
     keys = query.order_by(Key.key_type, Key.key_number).all()
-    return keys
+    return [KeyResponse.model_validate(k) for k in keys]
 
 
 @router.get("/{key_id}", response_model=KeyResponse)
@@ -113,7 +111,7 @@ def get_key(
     if not key:
         raise HTTPException(status_code=404, detail="Schlüssel nicht gefunden")
     
-    return key
+    return KeyResponse.model_validate(key)
 
 
 @router.post("", response_model=KeyResponse, status_code=201)
@@ -154,7 +152,7 @@ def create_key(
     db.commit()
     db.refresh(key)
     
-    return key
+    return KeyResponse.model_validate(key)
 
 
 @router.put("/{key_id}", response_model=KeyResponse)
@@ -180,7 +178,7 @@ def update_key(
     db.commit()
     db.refresh(key)
     
-    return key
+    return KeyResponse.model_validate(key)
 
 
 @router.post("/{key_id}/action", response_model=KeyResponse)
@@ -231,7 +229,7 @@ def key_action(
     db.commit()
     db.refresh(key)
     
-    return key
+    return KeyResponse.model_validate(key)
 
 
 @router.get("/{key_id}/history", response_model=List[KeyHistoryResponse])
@@ -253,7 +251,7 @@ def get_key_history(
         KeyHistory.key_id == key_id
     ).order_by(KeyHistory.action_date.desc(), KeyHistory.created_at.desc()).all()
     
-    return history
+    return [KeyHistoryResponse.model_validate(h) for h in history]
 
 
 @router.delete("/{key_id}", status_code=204)
