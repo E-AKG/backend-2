@@ -3,11 +3,12 @@ from sqlalchemy.orm import Session
 from typing import Optional, List
 from ..db import get_db
 from ..models.user import User
-from ..models.owner import Owner
+from ..models.owner import Owner, OwnerStatus
 from ..models.client import Client
 from ..utils.deps import get_current_user
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from decimal import Decimal
+from datetime import datetime
 
 router = APIRouter()
 
@@ -18,9 +19,16 @@ class OwnerCreate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
+    # Steuerliche Daten
+    tax_id: Optional[str] = None  # Steuer-ID (für Bescheinigungen)
+    # Eigentumsanteile
     ownership_percentage: Optional[float] = None
-    iban: Optional[str] = None
+    # Zahlungsverkehr
+    iban: Optional[str] = None  # IBAN für Ausschüttungen oder Lastschrift
     bank_name: Optional[str] = None
+    # Status
+    status: Optional[OwnerStatus] = None  # Selbstnutzer oder Kapitalanleger
+    # Zusätzliche Infos
     notes: Optional[str] = None
 
 
@@ -30,13 +38,17 @@ class OwnerUpdate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
+    tax_id: Optional[str] = None
     ownership_percentage: Optional[float] = None
     iban: Optional[str] = None
     bank_name: Optional[str] = None
+    status: Optional[OwnerStatus] = None
     notes: Optional[str] = None
 
 
 class OwnerOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: str
     client_id: str
     first_name: str
@@ -44,15 +56,14 @@ class OwnerOut(BaseModel):
     email: Optional[str]
     phone: Optional[str]
     address: Optional[str]
+    tax_id: Optional[str]
     ownership_percentage: Optional[float]
     iban: Optional[str]
     bank_name: Optional[str]
+    status: Optional[OwnerStatus]
     notes: Optional[str]
-    created_at: str
-    updated_at: str
-
-    class Config:
-        from_attributes = True
+    created_at: datetime
+    updated_at: datetime
 
 
 @router.get("/api/owners", response_model=List[OwnerOut])

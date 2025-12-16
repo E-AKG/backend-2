@@ -17,6 +17,7 @@ router = APIRouter(prefix="/api/properties", tags=["Properties"])
 @router.get("", response_model=dict)
 def list_properties(
     search: Optional[str] = Query(None, description="Search in name or address"),
+    client_id: Optional[str] = Query(None, description="Filter nach Mandant"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=10000, description="Items per page"),
     current_user: User = Depends(get_current_user),
@@ -24,9 +25,18 @@ def list_properties(
 ):
     """
     List all properties for the current user with pagination and search.
+    Filtert nach Mandant (client_id) falls angegeben.
     """
     try:
         query = db.query(Property).filter(Property.owner_id == current_user.id)
+        
+        # Filter nach Mandant (client_id) - falls Spalte existiert
+        if client_id:
+            try:
+                # Zeige NUR Daten mit diesem client_id
+                query = query.filter(Property.client_id == client_id)
+            except Exception:
+                logger.warning(f"client_id Filter für Properties nicht verfügbar (Spalte existiert noch nicht)")
         
         # Apply search filter
         if search:
@@ -60,22 +70,42 @@ def list_properties(
 @router.post("", response_model=PropertyOut, status_code=status.HTTP_201_CREATED)
 def create_property(
     property_data: PropertyCreate,
+    client_id: Optional[str] = Query(None, description="Mandant ID"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     Create a new property.
+    Setzt client_id falls angegeben und Spalte existiert.
     """
     try:
+        property_dict = property_data.model_dump()
+        
+        # Setze client_id falls angegeben (und Spalte existiert)
+        if client_id:
+            try:
+                # Prüfe ob Client existiert und dem User gehört
+                from ..models.client import Client
+                client = db.query(Client).filter(
+                    Client.id == client_id,
+                    Client.owner_id == current_user.id
+                ).first()
+                if not client:
+                    raise HTTPException(status_code=404, detail="Mandant nicht gefunden")
+                property_dict["client_id"] = client_id
+            except Exception as e:
+                # Falls client_id Spalte noch nicht existiert, ignorieren
+                logger.warning(f"client_id kann nicht gesetzt werden (Spalte existiert noch nicht): {str(e)}")
+        
         new_property = Property(
             owner_id=current_user.id,
-            **property_data.model_dump()
+            **property_dict
         )
         db.add(new_property)
         db.commit()
         db.refresh(new_property)
         
-        logger.info(f"Property created: {new_property.id} by user {current_user.id}")
+        logger.info(f"Property created: {new_property.id} by user {current_user.id}, client_id: {client_id}")
         return PropertyOut.model_validate(new_property)
     except SQLAlchemyError as e:
         db.rollback()
@@ -175,7 +205,7 @@ def delete_property(
     if units_count > 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot delete property with {units_count} units. Delete units first."
+            detail=f"Objekt kann nicht gelöscht werden, da {units_count} Einheit(en) vorhanden {'sind' if units_count > 1 else 'ist'}. Bitte löschen Sie zuerst die Einheiten."
         )
     
     try:

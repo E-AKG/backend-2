@@ -210,24 +210,170 @@ def create_transaction(
     db: Session = Depends(get_db)
 ):
     """Erstelle manuelle Transaktion (für Tests)"""
-    # Prüfe Konto-Zugehörigkeit
-    account = db.query(BankAccount).filter(
-        BankAccount.id == data.bank_account_id,
-        BankAccount.owner_id == current_user.id
-    ).first()
+    # Wenn kein bank_account_id angegeben, erstelle oder finde Standard-Konto
+    bank_account_id = data.bank_account_id
     
-    if not account:
-        raise HTTPException(status_code=404, detail="Konto nicht gefunden")
+    if not bank_account_id:
+        # Suche nach Standard-Konto für manuelle Buchungen
+        account = db.query(BankAccount).filter(
+            BankAccount.owner_id == current_user.id,
+            BankAccount.account_name.ilike("%manuell%")
+        ).first()
+        
+        # Wenn kein Standard-Konto existiert, erstelle eines
+        if not account:
+            account = BankAccount(
+                owner_id=current_user.id,
+                account_name="Manuelle Buchungen",
+                iban="MANUELL",
+                bank_name="Manuell"
+            )
+            db.add(account)
+            db.flush()
+        
+        bank_account_id = account.id
+    else:
+        # Prüfe Konto-Zugehörigkeit
+        account = db.query(BankAccount).filter(
+            BankAccount.id == bank_account_id,
+            BankAccount.owner_id == current_user.id
+        ).first()
+        
+        if not account:
+            raise HTTPException(status_code=404, detail="Konto nicht gefunden")
     
     try:
-        transaction = BankTransaction(**data.model_dump())
+        # Erstelle Transaktions-Daten (description wird zu purpose gemappt)
+        transaction_data = data.model_dump(exclude={'description'})
+        transaction_data['bank_account_id'] = bank_account_id
+        
+        # Wenn description vorhanden, aber purpose nicht, verwende description als purpose
+        if data.description and not data.purpose:
+            transaction_data['purpose'] = data.description
+        
+        transaction = BankTransaction(**transaction_data)
         db.add(transaction)
         db.commit()
         db.refresh(transaction)
         return BankTransactionOut.model_validate(transaction)
     except SQLAlchemyError as e:
         db.rollback()
+        logger.error(f"Fehler beim Erstellen der Transaktion: {str(e)}")
         raise HTTPException(status_code=500, detail="Fehler beim Erstellen")
+
+
+@router.delete("/api/bank-transactions/{transaction_id}", status_code=204)
+def delete_transaction(
+    transaction_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Lösche eine Bank-Transaktion (nur manuelle Buchungen)"""
+    # Prüfe Transaction-Zugehörigkeit
+    transaction = db.query(BankTransaction).join(BankAccount).filter(
+        BankTransaction.id == transaction_id,
+        BankAccount.owner_id == current_user.id
+    ).first()
+    
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transaktion nicht gefunden")
+    
+    # Prüfe, ob es eine manuelle Buchung ist (Konto "Manuelle Buchungen")
+    if transaction.bank_account.account_name.lower() != "manuelle buchungen":
+        raise HTTPException(
+            status_code=400,
+            detail="Nur manuelle Buchungen können gelöscht werden"
+        )
+    
+    # Prüfe, ob die Transaktion bereits zugeordnet ist
+    if transaction.is_matched:
+        # Wenn zugeordnet, entferne PaymentMatches und aktualisiere Charge
+        from ..models.bank import PaymentMatch
+        from ..models.billrun import Charge, ChargeStatus
+        from decimal import Decimal
+        
+        payment_matches = db.query(PaymentMatch).filter(
+            PaymentMatch.transaction_id == transaction_id
+        ).all()
+        
+        for match in payment_matches:
+            charge = db.query(Charge).filter(Charge.id == match.charge_id).first()
+            if charge:
+                # Reduziere paid_amount
+                matched_amount = Decimal(str(match.matched_amount))
+                charge.paid_amount -= matched_amount
+                
+                # Aktualisiere Status
+                if charge.paid_amount <= 0:
+                    charge.status = ChargeStatus.OPEN
+                    charge.paid_amount = Decimal(0)
+                elif charge.paid_amount < charge.amount:
+                    charge.status = ChargeStatus.PARTIALLY_PAID
+                else:
+                    charge.status = ChargeStatus.PAID
+                
+                # Aktualisiere BillRun
+                try:
+                    from .billrun_routes import update_bill_run_totals
+                    update_bill_run_totals(db, charge.bill_run_id)
+                except Exception as e:
+                    logger.error(f"Fehler beim Aktualisieren der BillRun beim Löschen: {str(e)}")
+            
+            # Lösche PaymentMatch
+            db.delete(match)
+        
+        # Setze is_matched zurück
+        transaction.is_matched = False
+    
+    try:
+        db.delete(transaction)
+        db.commit()
+        return None
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Fehler beim Löschen der Transaktion: {str(e)}")
+        raise HTTPException(status_code=500, detail="Fehler beim Löschen")
+
+
+@router.get("/api/bank/manual-transactions", response_model=dict)
+def get_manual_transactions(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Lade alle manuellen Buchungen (Transaktionen vom 'Manuelle Buchungen' Konto)"""
+    # Finde das "Manuelle Buchungen" Konto
+    manual_account = db.query(BankAccount).filter(
+        BankAccount.owner_id == current_user.id,
+        BankAccount.account_name.ilike("%manuell%")
+    ).first()
+    
+    if not manual_account:
+        return {
+            "items": [],
+            "page": page,
+            "page_size": page_size,
+            "total": 0
+        }
+    
+    # Lade Transaktionen von diesem Konto
+    query = db.query(BankTransaction).filter(
+        BankTransaction.bank_account_id == manual_account.id
+    )
+    
+    total = query.count()
+    offset = (page - 1) * page_size
+    transactions = query.order_by(
+        BankTransaction.transaction_date.desc()
+    ).offset(offset).limit(page_size).all()
+    
+    return {
+        "items": [BankTransactionOut.model_validate(t) for t in transactions],
+        "page": page,
+        "page_size": page_size,
+        "total": total
+    }
 
 
 # ========= PaymentMatches =========
@@ -282,6 +428,15 @@ def create_payment_match(
             transaction.is_matched = True
         
         db.commit()
+        
+        # Aktualisiere BillRun (Sollstellung) automatisch
+        try:
+            from ..routes.billrun_routes import update_bill_run_totals
+            update_bill_run_totals(db, charge.bill_run_id)
+        except Exception as e:
+            logger.error(f"Fehler beim Aktualisieren der BillRun: {str(e)}")
+            # Nicht kritisch - Charge wurde bereits aktualisiert
+        
         db.refresh(match)
         
         logger.info(f"Payment Match erstellt: {match.id}")
@@ -692,6 +847,15 @@ def manual_match_transaction(
             transaction.is_matched = True
         
         db.commit()
+        
+        # Aktualisiere BillRun (Sollstellung) automatisch
+        try:
+            from ..routes.billrun_routes import update_bill_run_totals
+            update_bill_run_totals(db, charge.bill_run_id)
+        except Exception as e:
+            logger.error(f"Fehler beim Aktualisieren der BillRun: {str(e)}")
+            # Nicht kritisch - Charge wurde bereits aktualisiert
+        
         db.refresh(payment_match)
         
         logger.info(f"Manual match created: Transaction {transaction_id} → Charge {charge_id} ({matched_amount}€)")
@@ -799,6 +963,86 @@ def trigger_auto_match_all(
     except Exception as e:
         logger.error(f"Auto-match trigger failed: {str(e)}")
         raise HTTPException(status_code=500, detail="Automatischer Abgleich fehlgeschlagen")
+
+
+@router.post("/api/bank/universal-reconcile", response_model=dict)
+def universal_reconcile_all(
+    client_id: Optional[str] = Query(None, description="Mandant ID"),
+    fiscal_year_id: Optional[str] = Query(None, description="Geschäftsjahr ID"),
+    min_confidence: float = Query(0.6, ge=0.0, le=1.0, description="Mindest-Confidence für automatisches Matching"),
+    sources: Optional[str] = Query(None, description="Komma-getrennte Liste der Quellen: csv,cashbook,manual (None = alle)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Universeller Abgleich: Gleicht ALLE Zahlungsquellen mit offenen Sollbuchungen ab
+    
+    Quellen:
+    1. CSV-Import (BankTransaction aus CSV)
+    2. Kassenbuch (CashBookEntry ohne charge_id)
+    3. Manuelle Transaktionen (BankTransaction manuell erstellt)
+    
+    Trial users: max 1 match operation
+    Paid users: unlimited
+    """
+    # Check match limit for trial users
+    check_match_limit(current_user, db)
+    
+    try:
+        from ..utils.universal_matcher import universal_reconcile
+        
+        # Parse sources (komma-getrennte Liste)
+        sources_list = None
+        if sources:
+            sources_list = [s.strip() for s in sources.split(",") if s.strip()]
+        
+        logger.info(f"🔄 Starte universellen Abgleich für User {current_user.id} mit Quellen: {sources_list or 'alle'}")
+        
+        stats = universal_reconcile(
+            db,
+            current_user.id,
+            client_id=client_id,
+            fiscal_year_id=fiscal_year_id,
+            min_confidence=min_confidence,
+            sources=sources_list
+        )
+        
+        # Commit der Transaktionen
+        db.commit()
+        
+        logger.info(f"✅ Universeller Abgleich abgeschlossen: {stats['matched']} von {stats['processed']} Zahlungen zugeordnet")
+        
+        # Erstelle detaillierte Nachricht
+        message_parts = []
+        if stats.get('warning'):
+            message_parts.append(stats['warning'])
+        else:
+            message_parts.append(f"Abgleich abgeschlossen: {stats['matched']} von {stats['processed']} Einträgen zugeordnet")
+            if stats['matched'] == 0 and stats['processed'] > 0:
+                message_parts.append("\n⚠️ Keine Matches gefunden. Mögliche Gründe:")
+                message_parts.append(f"- Mindest-Confidence zu hoch (aktuell: {min_confidence:.0%})")
+                message_parts.append("- Keine passenden offenen Sollbuchungen")
+                message_parts.append("- Daten stimmen nicht überein (Name, Betrag, IBAN)")
+                message_parts.append("\n💡 Tipp: Prüfen Sie die Backend-Logs für Details.")
+        
+        return {
+            "status": "success",
+            "message": "\n".join(message_parts),
+            "processed": stats.get("processed", 0),
+            "matched": stats.get("matched", 0),
+            "no_match": stats.get("no_match", 0),
+            "errors": stats.get("errors", 0),
+            "sources": stats.get("sources", {}),
+            "details": stats.get("details", []),
+            "warning": stats.get("warning")
+        }
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Fehler beim universellen Abgleich: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Fehler beim universellen Abgleich: {str(e)}")
 
 
 # ========= CSV Upload =========

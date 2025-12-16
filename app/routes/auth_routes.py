@@ -4,10 +4,13 @@ from sqlalchemy.exc import SQLAlchemyError
 from passlib.context import CryptContext
 from ..db import get_db
 from ..models.user import User
-from ..schemas.user_schema import UserCreate, UserLogin, TokenResponse
+from ..models.portal_user import PortalUser
+from ..models.tenant import Tenant
+from ..schemas.user_schema import UserCreate, UserLogin, TokenResponse, UserUpdate, UserOut
 from ..utils.jwt_handler import create_token, decode_token
 from ..utils.mailer import send_verification_email
 from ..config import settings
+from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,6 +19,54 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 # Initialize password context with bcrypt
 # Note: If bcrypt version compatibility issues occur, this will fail at startup
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+from ..utils.deps import get_current_user
+
+
+@router.put("/me", response_model=UserOut)
+def update_user_settings(
+    user_data: UserUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Aktualisiere User-Einstellungen (z.B. Absender-E-Mail für Benachrichtigungen)
+    
+    - **notification_from_email**: Absender-E-Mail für Benachrichtigungen (optional)
+    """
+    # Aktualisiere nur gesetzte Felder
+    if user_data.notification_from_email is not None:
+        # Validiere E-Mail-Format (falls nicht leer)
+        if user_data.notification_from_email.strip():
+            from pydantic import EmailStr, ValidationError
+            try:
+                # Validiere E-Mail-Format
+                EmailStr._validate(user_data.notification_from_email.strip())
+                current_user.notification_from_email = user_data.notification_from_email.strip()
+            except Exception:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Ungültige E-Mail-Adresse"
+                )
+        else:
+            # Leer = entferne Einstellung
+            current_user.notification_from_email = None
+    
+    db.commit()
+    db.refresh(current_user)
+    
+    logger.info(f"User settings updated: {current_user.email}")
+    
+    return UserOut.model_validate(current_user)
+
+
+@router.get("/me", response_model=UserOut)
+def get_current_user_info(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Hole aktuelle User-Informationen"""
+    return UserOut.model_validate(current_user)
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
@@ -435,4 +486,145 @@ def login(credentials: UserLogin, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred. Please try again later."
+        )
+
+
+@router.post("/portal/login", response_model=TokenResponse)
+def portal_login(credentials: UserLogin, db: Session = Depends(get_db)):
+    """
+    Authenticate portal user (Mieter) and return access token.
+    
+    - **email**: Portal user email address
+    - **password**: Portal user password
+    
+    Returns an access token for authenticated portal requests.
+    """
+    try:
+        # Find portal user by email
+        portal_user = db.query(PortalUser).filter(PortalUser.email == credentials.email).first()
+        
+        # Check if portal user exists and password is correct
+        if not portal_user or not pwd_context.verify(credentials.password, portal_user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password.",
+                headers={"WWW-Authenticate": "Bearer"}
+            )
+        
+        # Check if portal user is active
+        if not portal_user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Ihr Portal-Konto ist deaktiviert. Bitte kontaktieren Sie den Administrator."
+            )
+        
+        # Check if email is verified
+        if not portal_user.is_verified:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Bitte verifizieren Sie Ihre E-Mail-Adresse vor dem Login. Überprüfen Sie Ihr Postfach (auch den Spam-Ordner) auf die Verifizierungs-E-Mail."
+            )
+        
+        # Generate access token with portal_user_id
+        access_token = create_token(
+            {"sub": portal_user.id, "portal_user_id": portal_user.id, "user_type": "portal"},
+            user_type="portal"
+        )
+        
+        logger.info(f"Portal user logged in: {portal_user.email}")
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error during portal login: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred. Please try again later."
+        )
+
+
+@router.post("/portal/register", status_code=status.HTTP_201_CREATED)
+def portal_register(user: UserCreate, db: Session = Depends(get_db)):
+    """
+    Selbst-Registrierung für Mieterportal
+    
+    - **email**: E-Mail-Adresse (muss mit Tenant-E-Mail übereinstimmen)
+    - **password**: Passwort (mindestens 8 Zeichen)
+    
+    Der Mieter kann sich selbst registrieren, wenn seine E-Mail-Adresse bereits im System als Tenant existiert.
+    """
+    try:
+        logger.info(f"Portal-Registrierung versucht für E-Mail: {user.email}")
+        
+        # Prüfe ob PortalUser bereits existiert
+        existing_portal_user = db.query(PortalUser).filter(PortalUser.email == user.email).first()
+        if existing_portal_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Diese E-Mail-Adresse ist bereits im Mieterportal registriert. Bitte loggen Sie sich ein."
+            )
+        
+        # Prüfe ob User (Admin) mit dieser E-Mail existiert
+        # Das ist erlaubt - ein Admin kann auch Mieter sein
+        existing_admin_user = db.query(User).filter(User.email == user.email).first()
+        if existing_admin_user:
+            logger.info(f"E-Mail {user.email} wird bereits als Admin verwendet - Portal-Registrierung ist trotzdem erlaubt")
+        
+        # Suche nach Tenant mit dieser E-Mail-Adresse
+        tenant = db.query(Tenant).filter(Tenant.email == user.email).first()
+        
+        if not tenant:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Kein Mieter mit dieser E-Mail-Adresse gefunden. Bitte kontaktieren Sie Ihren Vermieter oder warten Sie auf eine Einladung."
+            )
+        
+        # Prüfe ob Tenant bereits einen aktiven Lease hat
+        from ..models.lease import Lease, LeaseStatus
+        active_lease = db.query(Lease).filter(
+            Lease.tenant_id == tenant.id,
+            Lease.status == LeaseStatus.ACTIVE
+        ).first()
+        
+        if not active_lease:
+            logger.warning(f"Tenant {tenant.id} hat keinen aktiven Mietvertrag")
+            # Wir erlauben trotzdem die Registrierung, aber warnen
+        
+        # Hash Passwort
+        password_hash = pwd_context.hash(user.password)
+        
+        # Erstelle PortalUser
+        portal_user = PortalUser(
+            tenant_id=tenant.id,
+            lease_id=active_lease.id if active_lease else None,
+            email=user.email,
+            password_hash=password_hash,
+            is_active=True,
+            is_verified=True  # E-Mail wurde bereits verifiziert (existiert im System)
+        )
+        
+        db.add(portal_user)
+        db.commit()
+        db.refresh(portal_user)
+        
+        logger.info(f"Portal-User erfolgreich registriert: {portal_user.email} (Tenant: {tenant.id})")
+        
+        return {
+            "message": "Registrierung erfolgreich! Sie können sich jetzt einloggen.",
+            "email": portal_user.email
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Fehler bei Portal-Registrierung: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ein Fehler ist bei der Registrierung aufgetreten. Bitte versuchen Sie es später erneut."
         )

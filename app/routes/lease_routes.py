@@ -9,6 +9,7 @@ from ..models.user import User
 from ..models.lease import Lease, LeaseComponent, LeaseStatus, RentAdjustment
 from ..models.unit import Unit
 from ..models.tenant import Tenant
+from ..models.property import Property
 from ..schemas.lease_schema import (
     LeaseCreate, LeaseUpdate, LeaseOut,
     LeaseComponentCreate, LeaseComponentUpdate, LeaseComponentOut,
@@ -26,6 +27,8 @@ def list_leases(
     status: Optional[LeaseStatus] = Query(None, description="Filter by status"),
     tenant_id: Optional[str] = Query(None, description="Filter by tenant ID"),
     unit_id: Optional[str] = Query(None, description="Filter by unit ID"),
+    client_id: Optional[str] = Query(None, description="Filter nach Mandant"),
+    fiscal_year_id: Optional[str] = Query(None, description="Filter nach Geschäftsjahr"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=10000, description="Items per page"),
     current_user: User = Depends(get_current_user),
@@ -33,9 +36,30 @@ def list_leases(
 ):
     """
     List all leases for the current user with filters and pagination.
+    Filtert nach Mandant (client_id) und Geschäftsjahr (fiscal_year_id) falls angegeben.
     """
     try:
         query = db.query(Lease).filter(Lease.owner_id == current_user.id)
+        
+        # Filter nach Mandant (client_id) - falls Spalte existiert
+        if client_id:
+            try:
+                # Zeige NUR Daten mit diesem client_id
+                query = query.filter(Lease.client_id == client_id)
+            except Exception:
+                # Falls client_id Spalte noch nicht existiert, filtere über Unit -> Property
+                try:
+                    query = query.join(Unit).join(Property).filter(Property.client_id == client_id)
+                except Exception:
+                    logger.warning(f"client_id Filter für Leases nicht verfügbar (Spalte existiert noch nicht)")
+        
+        # Filter nach Geschäftsjahr (fiscal_year_id) - falls Spalte existiert
+        if fiscal_year_id:
+            try:
+                # Zeige NUR Daten mit diesem fiscal_year_id
+                query = query.filter(Lease.fiscal_year_id == fiscal_year_id)
+            except Exception:
+                logger.warning(f"fiscal_year_id Filter für Leases nicht verfügbar (Spalte existiert noch nicht)")
         
         # Apply filters
         if status:
@@ -69,11 +93,14 @@ def list_leases(
 @router.post("/api/leases", response_model=LeaseOut, status_code=status.HTTP_201_CREATED)
 def create_lease(
     lease_data: LeaseCreate,
+    client_id: Optional[str] = Query(None, description="Mandant ID"),
+    fiscal_year_id: Optional[str] = Query(None, description="Geschäftsjahr ID"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     Create a new lease.
+    Setzt client_id und fiscal_year_id falls angegeben und Spalten existieren.
     """
     # Verify unit exists and belongs to user
     unit = db.query(Unit).filter(
@@ -112,9 +139,48 @@ def create_lease(
         )
     
     try:
+        lease_dict = lease_data.model_dump()
+        
+        # Setze client_id falls angegeben (und Spalte existiert)
+        # Falls nicht angegeben, verwende client_id von Unit oder Tenant
+        if client_id:
+            try:
+                from ..models.client import Client
+                client = db.query(Client).filter(
+                    Client.id == client_id,
+                    Client.owner_id == current_user.id
+                ).first()
+                if not client:
+                    raise HTTPException(status_code=404, detail="Mandant nicht gefunden")
+                lease_dict["client_id"] = client_id
+            except Exception as e:
+                logger.warning(f"client_id kann nicht gesetzt werden (Spalte existiert noch nicht): {str(e)}")
+        else:
+            # Versuche client_id von Unit oder Tenant zu übernehmen
+            try:
+                if hasattr(unit, 'client_id') and unit.client_id:
+                    lease_dict["client_id"] = unit.client_id
+                elif hasattr(tenant, 'client_id') and tenant.client_id:
+                    lease_dict["client_id"] = tenant.client_id
+            except Exception:
+                pass
+        
+        # Setze fiscal_year_id falls angegeben
+        if fiscal_year_id:
+            try:
+                from ..models.fiscal_year import FiscalYear
+                fiscal_year = db.query(FiscalYear).filter(
+                    FiscalYear.id == fiscal_year_id,
+                    FiscalYear.client_id == (lease_dict.get("client_id") or client_id)
+                ).first()
+                if fiscal_year:
+                    lease_dict["fiscal_year_id"] = fiscal_year_id
+            except Exception as e:
+                logger.warning(f"fiscal_year_id kann nicht gesetzt werden (Spalte existiert noch nicht): {str(e)}")
+        
         new_lease = Lease(
             owner_id=current_user.id,
-            **lease_data.model_dump()
+            **lease_dict
         )
         db.add(new_lease)
         db.commit()
@@ -427,12 +493,16 @@ def adjust_rent(
     old_amount = component.amount
     
     # Erstelle Adjustment-Eintrag
+    # TODO: Uncomment after database migration adds adjustment_type column
+    # adjustment_reason_text = reason or f"{component.adjustment_type.value} Anpassung" if hasattr(component, 'adjustment_type') and component.adjustment_type else "Anpassung"
+    adjustment_reason_text = reason or "Anpassung"
+    
     adjustment = RentAdjustment(
         component_id=component_id,
         adjustment_date=adjustment_date,
         old_amount=old_amount,
         new_amount=new_amount,
-        adjustment_reason=reason or f"{component.adjustment_type.value} Anpassung"
+        adjustment_reason=adjustment_reason_text
     )
     
     # Aktualisiere Komponente
@@ -467,31 +537,33 @@ def get_upcoming_adjustments(
     upcoming = []
     today = date_class.today()
     
-    for component in lease.components:
-        if component.adjustment_type == "staggered" and component.staggered_schedule:
-            # Prüfe Staffelmiete
-            for schedule_item in component.staggered_schedule:
-                schedule_date = date_class.fromisoformat(schedule_item.get("date"))
-                if schedule_date > today:
-                    upcoming.append({
-                        "component_id": component.id,
-                        "component_type": component.type.value,
-                        "adjustment_date": schedule_date.isoformat(),
-                        "new_amount": float(schedule_item.get("amount", 0)),
-                        "current_amount": float(component.amount),
-                        "type": "staggered"
-                    })
-        elif component.adjustment_type == "index_linked" and component.index_adjustment_date:
-            # Prüfe Indexmiete
-            if component.index_adjustment_date > today:
-                upcoming.append({
-                    "component_id": component.id,
-                    "component_type": component.type.value,
-                    "adjustment_date": component.index_adjustment_date.isoformat(),
-                    "current_amount": float(component.amount),
-                    "index_type": component.index_type,
-                    "type": "index_linked"
-                })
+    # TODO: Uncomment after database migration adds adjustment_type, staggered_schedule, index_adjustment_date columns
+    # Temporarily disabled - columns don't exist yet
+    # for component in lease.components:
+    #     if hasattr(component, 'adjustment_type') and component.adjustment_type == "staggered" and hasattr(component, 'staggered_schedule') and component.staggered_schedule:
+    #         # Prüfe Staffelmiete
+    #         for schedule_item in component.staggered_schedule:
+    #             schedule_date = date_class.fromisoformat(schedule_item.get("date"))
+    #             if schedule_date > today:
+    #                 upcoming.append({
+    #                     "component_id": component.id,
+    #                     "component_type": component.type.value,
+    #                     "adjustment_date": schedule_date.isoformat(),
+    #                     "new_amount": float(schedule_item.get("amount", 0)),
+    #                     "current_amount": float(component.amount),
+    #                     "type": "staggered"
+    #                 })
+    #     elif hasattr(component, 'adjustment_type') and component.adjustment_type == "index_linked" and hasattr(component, 'index_adjustment_date') and component.index_adjustment_date:
+    #         # Prüfe Indexmiete
+    #         if component.index_adjustment_date > today:
+    #             upcoming.append({
+    #                 "component_id": component.id,
+    #                 "component_type": component.type.value,
+    #                 "adjustment_date": component.index_adjustment_date.isoformat(),
+    #                 "current_amount": float(component.amount),
+    #                 "index_type": component.index_type,
+    #                 "type": "index_linked"
+    #             })
     
     return {
         "lease_id": lease_id,

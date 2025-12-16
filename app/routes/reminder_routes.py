@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from datetime import date, timedelta
 from ..db import get_db
@@ -9,6 +9,9 @@ from ..models.billrun import Charge, ChargeStatus
 from ..models.tenant import Tenant
 from ..utils.deps import get_current_user
 from pydantic import BaseModel
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/reminders", tags=["Reminders"])
 
@@ -142,7 +145,14 @@ def bulk_create_reminders(
     from ..models.unit import Unit
     from ..models.property import Property
     
+    from datetime import timedelta
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
     cutoff_date = date.today() - timedelta(days=days_overdue)
+    
+    logger.info(f"🔍 Mahnlauf gestartet: Suche nach überfälligen Charges (mindestens {days_overdue} Tage überfällig, Fälligkeitsdatum vor {cutoff_date})")
     
     # Finde alle überfälligen Charges
     overdue_charges = db.query(Charge).join(Lease).join(Unit).join(Property).filter(
@@ -153,8 +163,16 @@ def bulk_create_reminders(
         Charge.due_date < cutoff_date
     ).all()
     
+    logger.info(f"📋 Gefunden: {len(overdue_charges)} überfällige Charges")
+    
+    # Debug: Zeige Details der gefundenen Charges
+    for charge in overdue_charges:
+        days_overdue_count = (date.today() - charge.due_date).days
+        logger.info(f"   - Charge {charge.id}: {days_overdue_count} Tage überfällig, Status: {charge.status}, Betrag: {charge.amount}€, Bezahlt: {charge.paid_amount}€")
+    
     created = []
     skipped = []
+    reasons_skipped = {}
     
     for charge in overdue_charges:
         # Prüfe ob bereits eine Mahnung dieses Typs existiert
@@ -165,13 +183,31 @@ def bulk_create_reminders(
         ).first()
         
         if existing:
+            reason = "Mahnung dieses Typs existiert bereits"
             skipped.append({
                 "charge_id": charge.id,
-                "reason": "Mahnung dieses Typs existiert bereits"
+                "reason": reason
             })
+            if reason not in reasons_skipped:
+                reasons_skipped[reason] = 0
+            reasons_skipped[reason] += 1
+            logger.info(f"   ⏭️ Charge {charge.id}: Übersprungen - {reason}")
             continue
         
         open_amount = float(charge.amount - charge.paid_amount)
+        
+        # Prüfe ob noch offener Betrag vorhanden ist
+        if open_amount <= 0:
+            reason = "Charge bereits vollständig bezahlt"
+            skipped.append({
+                "charge_id": charge.id,
+                "reason": reason
+            })
+            if reason not in reasons_skipped:
+                reasons_skipped[reason] = 0
+            reasons_skipped[reason] += 1
+            logger.info(f"   ⏭️ Charge {charge.id}: Übersprungen - {reason}")
+            continue
         
         reminder = Reminder(
             owner_id=current_user.id,
@@ -191,17 +227,32 @@ def bulk_create_reminders(
             "tenant_id": charge.lease.tenant_id,
             "amount": open_amount
         })
+        logger.info(f"   ✅ Mahnung erstellt für Charge {charge.id}: {open_amount}€")
     
     db.commit()
     
-    return {
+    logger.info(f"✅ Mahnlauf abgeschlossen: {len(created)} erstellt, {len(skipped)} übersprungen")
+    
+    # Erstelle detaillierte Antwort mit Gründen
+    response = {
         "created": len(created),
         "skipped": len(skipped),
+        "total_found": len(overdue_charges),
         "details": {
             "created": created,
-            "skipped": skipped
+            "skipped": skipped,
+            "reasons_skipped": reasons_skipped
         }
     }
+    
+    # Wenn keine Mahnungen erstellt wurden, füge hilfreiche Info hinzu
+    if len(created) == 0:
+        if len(overdue_charges) == 0:
+            response["message"] = f"Keine überfälligen Zahlungen gefunden (Filter: mindestens {days_overdue} Tage überfällig, Fälligkeitsdatum vor {cutoff_date})"
+        else:
+            response["message"] = f"{len(overdue_charges)} überfällige Zahlungen gefunden, aber alle wurden übersprungen. Gründe: {', '.join(reasons_skipped.keys())}"
+    
+    return response
 
 
 @router.put("/{reminder_id}", response_model=ReminderResponse)
@@ -272,14 +323,36 @@ def delete_reminder(
 @router.post("/{reminder_id}/generate-pdf")
 def generate_reminder_pdf(
     reminder_id: str,
+    template_name: Optional[str] = Query(None, description="Name des benutzerdefinierten Templates (optional)"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    Generiere PDF für Mahnung
-    (Vereinfacht - in Produktion würde hier PDF-Generierung mit ReportLab oder ähnlich stattfinden)
+    Generiere PDF für Mahnung aus HTML-Template
+    
+    Template-Platzhalter:
+    - {{ tenant.first_name }}, {{ tenant.last_name }}, {{ tenant.full_name }}, {{ tenant.address }}, {{ tenant.email }}, {{ tenant.phone }}
+    - {{ property.name }}, {{ property.address }}
+    - {{ unit.label }}, {{ unit.unit_number }}
+    - {{ charge.amount }}, {{ charge.amount_formatted }}, {{ charge.paid_amount }}, {{ charge.paid_amount_formatted }}, {{ charge.due_date }}, {{ charge.description }}
+    - {{ amount }}, {{ amount_formatted }}, {{ reminder_fee }}, {{ reminder_fee_formatted }}, {{ total_amount }}, {{ total_amount_formatted }}
+    - {{ reminder_type }}, {{ reminder_type_label }}, {{ reminder_date }}, {{ reminder_id }}
+    - {{ client.name }}, {{ client.address }}, {{ client.email }}, {{ client.phone }}
+    - {{ owner.name }}, {{ owner.email }}
+    - {{ notes }}
+    - Helper: {{ format_currency(123.45) }}, {{ format_date(date_object) }}
     """
-    reminder = db.query(Reminder).filter(
+    from ..models.lease import Lease
+    from ..models.unit import Unit
+    from ..models.property import Property
+    from ..models.client import Client
+    
+    reminder = db.query(Reminder).options(
+        joinedload(Reminder.charge).joinedload(Charge.lease).joinedload(Lease.tenant),
+        joinedload(Reminder.charge).joinedload(Charge.lease).joinedload(Lease.unit).joinedload(Unit.property),
+        joinedload(Reminder.client),
+        joinedload(Reminder.owner)
+    ).filter(
         Reminder.id == reminder_id,
         Reminder.owner_id == current_user.id
     ).first()
@@ -287,18 +360,95 @@ def generate_reminder_pdf(
     if not reminder:
         raise HTTPException(status_code=404, detail="Mahnung nicht gefunden")
     
-    # In Produktion: PDF-Generierung hier
-    # Für jetzt: Setze document_path und Status
-    reminder.document_path = f"/documents/reminder_{reminder_id}.pdf"
-    reminder.status = ReminderStatus.DRAFT  # Bleibt Entwurf bis versendet
+    # Lade alle benötigten Daten
+    charge = reminder.charge
+    lease = charge.lease if charge else None
+    tenant = reminder.tenant
+    unit = lease.unit if lease else None
+    property_obj = unit.property if unit else None
+    client = reminder.client
+    owner = reminder.owner
     
-    db.commit()
-    
-    return {
-        "status": "generated",
-        "document_path": reminder.document_path,
-        "reminder_id": reminder_id
+    # Bereite Daten für Template vor
+    reminder_data = {
+        "reminder_id": reminder.id,
+        "reminder_type": reminder.reminder_type.value,
+        "reminder_date": reminder.reminder_date,
+        "amount": float(reminder.amount),
+        "reminder_fee": float(reminder.reminder_fee),
+        "notes": reminder.notes,
+        "tenant": {
+            "first_name": tenant.first_name if tenant else "",
+            "last_name": tenant.last_name if tenant else "",
+            "address": tenant.address if tenant else "",
+            "email": tenant.email if tenant else "",
+            "phone": tenant.phone if tenant else "",
+        },
+        "property": {
+            "name": property_obj.name if property_obj else "",
+            "address": property_obj.address if property_obj else "",
+        },
+        "unit": {
+            "label": unit.unit_label if unit else "",
+            "unit_number": unit.unit_number if unit else "",
+        },
+        "charge": {
+            "amount": float(charge.amount) if charge else 0,
+            "paid_amount": float(charge.paid_amount) if charge else 0,
+            "due_date": charge.due_date if charge else None,
+            "description": f"Miete {charge.due_date.strftime('%m/%Y')}" if charge and charge.due_date else "",
+        },
+        "client": {
+            "name": client.name if client else "",
+            "address": client.address if client else "",
+            "email": client.email if client else "",
+            "phone": client.phone if client else "",
+        },
+        "owner": {
+            "name": f"{owner.first_name} {owner.last_name}".strip() if owner else "",
+            "email": owner.email if owner else "",
+        },
     }
+    
+    # Lade Template (benutzerdefiniert oder Standard)
+    from ..utils.pdf_generator import generate_reminder_pdf, load_custom_template
+    
+    template_content = None
+    if template_name:
+        template_content = load_custom_template(template_name)
+        if not template_content:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Template '{template_name}' nicht gefunden. Bitte laden Sie es zuerst hoch."
+            )
+    
+    # Generiere PDF
+    try:
+        output_filename = f"reminder_{reminder_id}.pdf"
+        pdf_path = generate_reminder_pdf(
+            reminder_data=reminder_data,
+            template_content=template_content,
+            output_filename=output_filename
+        )
+        
+        # Speichere Pfad in Datenbank
+        reminder.document_path = pdf_path
+        reminder.status = ReminderStatus.DRAFT  # Bleibt Entwurf bis versendet
+        
+        db.commit()
+        
+        return {
+            "status": "generated",
+            "document_path": pdf_path,
+            "reminder_id": reminder_id,
+            "message": "PDF erfolgreich generiert"
+        }
+    except Exception as e:
+        logger.error(f"Fehler beim Generieren der PDF: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Fehler beim Generieren der PDF: {str(e)}"
+        )
 
 
 @router.post("/{reminder_id}/mark-sent")
@@ -323,4 +473,244 @@ def mark_reminder_sent(
     db.refresh(reminder)
     
     return reminder
+
+
+@router.post("/upload-template")
+def upload_reminder_template(
+    template_name: str = Query(..., description="Name der Template-Datei (z.B. 'mein_template.html')"),
+    template_content: str = Query(..., description="HTML-Template-Inhalt"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Lade ein benutzerdefiniertes HTML-Template hoch
+    
+    Das Template wird in backend-2/templates/ gespeichert und kann dann
+    beim Generieren von PDFs verwendet werden.
+    """
+    from pathlib import Path
+    from ..utils.pdf_generator import TEMPLATE_DIR
+    
+    # Validiere Template-Name
+    if not template_name.endswith('.html'):
+        template_name += '.html'
+    
+    # Speichere Template
+    template_path = TEMPLATE_DIR / template_name
+    
+    try:
+        with open(template_path, 'w', encoding='utf-8') as f:
+            f.write(template_content)
+        
+        logger.info(f"✅ Template gespeichert: {template_path}")
+        
+        return {
+            "status": "success",
+            "message": f"Template '{template_name}' erfolgreich hochgeladen",
+            "template_name": template_name,
+            "template_path": str(template_path)
+        }
+    except Exception as e:
+        logger.error(f"❌ Fehler beim Speichern des Templates: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Fehler beim Speichern des Templates: {str(e)}"
+        )
+
+
+@router.get("/templates")
+def list_reminder_templates(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Liste alle verfügbaren Templates auf
+    """
+    from pathlib import Path
+    from ..utils.pdf_generator import TEMPLATE_DIR
+    
+    templates = []
+    
+    if TEMPLATE_DIR.exists():
+        for template_file in TEMPLATE_DIR.glob("*.html"):
+            templates.append({
+                "name": template_file.name,
+                "path": str(template_file),
+                "size": template_file.stat().st_size,
+                "modified": template_file.stat().st_mtime
+            })
+    
+    return {
+        "templates": templates,
+        "count": len(templates)
+    }
+
+
+@router.post("/test-pdf")
+def test_generate_pdf(
+    template_name: Optional[str] = Query(None, description="Name des Templates (optional, Standard wird verwendet)"),
+    client_id: Optional[str] = Query(None, description="Mandant ID (optional, verwendet ersten verfügbaren)"),
+    charge_id: Optional[str] = Query(None, description="Charge ID (optional, verwendet erste offene Charge)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Generiere eine Test-PDF mit echten Daten aus dem Tool zum Testen des Templates
+    
+    Verwendet 100% echte Daten aus der Datenbank:
+    - Echte offene Charge (Sollbuchung) mit echten Beträgen
+    - Echter Mandant (Client)
+    - Echter Mieter (Tenant) aus der Charge
+    - Echtes Objekt (Property) und Einheit (Unit) aus dem Vertrag
+    - Echte Fälligkeitsdaten, Beträge, etc.
+    """
+    from datetime import date
+    from sqlalchemy.orm import joinedload
+    from ..utils.pdf_generator import generate_reminder_pdf, load_custom_template
+    from ..models.client import Client
+    from ..models.billrun import Charge, ChargeStatus
+    from ..models.lease import Lease, LeaseStatus
+    from ..models.tenant import Tenant
+    from ..models.property import Property
+    from ..models.unit import Unit
+    
+    # Hole Client (Mandant)
+    if client_id:
+        client = db.query(Client).filter(
+            Client.id == client_id,
+            Client.owner_id == current_user.id
+        ).first()
+    else:
+        # Nimm ersten verfügbaren Client
+        client = db.query(Client).filter(
+            Client.owner_id == current_user.id
+        ).first()
+    
+    if not client:
+        raise HTTPException(
+            status_code=404,
+            detail="Kein Mandant gefunden. Bitte erstellen Sie zuerst einen Mandanten."
+        )
+    
+    # Hole echte offene Charge (Sollbuchung)
+    if charge_id:
+        charge = db.query(Charge).options(
+            joinedload(Charge.lease).joinedload(Lease.tenant),
+            joinedload(Charge.lease).joinedload(Lease.unit).joinedload(Unit.property)
+        ).filter(
+            Charge.id == charge_id,
+            Charge.bill_run.has(owner_id=current_user.id)
+        ).first()
+    else:
+        # Nimm erste offene Charge mit allen Relationships
+        charge = db.query(Charge).options(
+            joinedload(Charge.lease).joinedload(Lease.tenant),
+            joinedload(Charge.lease).joinedload(Lease.unit).joinedload(Unit.property)
+        ).join(Lease).filter(
+            Charge.status.in_([ChargeStatus.OPEN, ChargeStatus.PARTIALLY_PAID, ChargeStatus.OVERDUE]),
+            Lease.owner_id == current_user.id
+        ).order_by(Charge.due_date.desc()).first()
+    
+    if not charge:
+        raise HTTPException(
+            status_code=404,
+            detail="Keine offene Sollbuchung gefunden. Bitte erstellen Sie zuerst eine Sollstellung mit offenen Posten."
+        )
+    
+    # Hole alle benötigten Daten aus der Charge
+    lease = charge.lease
+    tenant = lease.tenant if lease else None
+    unit = lease.unit if lease else None
+    property_obj = unit.property if unit else None
+    
+    if not tenant:
+        raise HTTPException(
+            status_code=404,
+            detail="Kein Mieter zur Charge gefunden."
+        )
+    
+    if not property_obj or not unit:
+        raise HTTPException(
+            status_code=404,
+            detail="Kein Objekt oder Einheit zur Charge gefunden."
+        )
+    
+    # Berechne offenen Betrag (echt!)
+    open_amount = float(charge.amount - charge.paid_amount)
+    
+    # Erstelle Test-Daten mit 100% echten Werten
+    test_reminder_data = {
+        "reminder_id": "test-reminder-" + str(date.today().strftime('%Y%m%d')),
+        "reminder_type": "first_reminder",
+        "reminder_date": date.today(),  # Heutiges Datum
+        "amount": open_amount,  # ECHTER offener Betrag
+        "reminder_fee": 0.00,  # Keine Gebühr für Test
+        "notes": "Dies ist eine Test-Mahnung zum Prüfen des Template-Designs. Bitte überweisen Sie den Betrag umgehend.",
+        "tenant": {
+            "first_name": tenant.first_name,
+            "last_name": tenant.last_name,
+            "address": tenant.address or "",
+            "email": tenant.email or "",
+            "phone": tenant.phone or "",
+        },
+        "property": {
+            "name": property_obj.name,
+            "address": property_obj.address or "",
+        },
+        "unit": {
+            "label": unit.unit_label,
+            "unit_number": unit.unit_number or "",
+        },
+        "charge": {
+            "amount": float(charge.amount),  # ECHTER ursprünglicher Betrag
+            "paid_amount": float(charge.paid_amount),  # ECHTER bereits bezahlter Betrag
+            "due_date": charge.due_date,  # ECHTES Fälligkeitsdatum
+            "description": charge.description or f"Miete {charge.due_date.strftime('%m/%Y') if charge.due_date else ''}",
+        },
+        "client": {
+            "name": client.name,
+            "address": client.address or "",
+            "email": client.email or "",
+            "phone": client.phone or "",
+        },
+        "owner": {
+            "name": client.name,  # Verwende Client-Name als Owner-Name
+            "email": current_user.email,
+        },
+    }
+    
+    # Lade Template (benutzerdefiniert oder Standard)
+    template_content = None
+    if template_name:
+        template_content = load_custom_template(template_name)
+        if not template_content:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Template '{template_name}' nicht gefunden. Verfügbare Templates: {', '.join([f.name for f in (Path(__file__).parent.parent.parent / 'templates').glob('*.html')])}"
+            )
+    
+    try:
+        # Generiere PDF
+        output_filename = f"test_reminder_{date.today().strftime('%Y%m%d')}.pdf"
+        pdf_path = generate_reminder_pdf(
+            reminder_data=test_reminder_data,
+            template_content=template_content,
+            output_filename=output_filename
+        )
+        
+        logger.info(f"✅ Test-PDF generiert: {pdf_path}")
+        
+        return {
+            "status": "success",
+            "message": "Test-PDF erfolgreich generiert",
+            "document_path": pdf_path,
+            "filename": output_filename,
+            "note": "Dies ist eine Test-PDF mit Dummy-Daten. Öffnen Sie die Datei, um das Template-Design zu prüfen."
+        }
+    except Exception as e:
+        logger.error(f"❌ Fehler beim Generieren der Test-PDF: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"Fehler beim Generieren der Test-PDF: {str(e)}"
+        )
 
