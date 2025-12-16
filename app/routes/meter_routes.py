@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import date
+from datetime import date, datetime
 from ..db import get_db
 from ..models.user import User
 from ..models.meter import Meter, MeterReading, MeterType
 from ..utils.deps import get_current_user
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 router = APIRouter(prefix="/api/meters", tags=["Meters"])
 
@@ -36,6 +36,8 @@ class MeterUpdate(BaseModel):
 
 
 class MeterResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: str
     property_id: Optional[str]
     unit_id: Optional[str]
@@ -47,11 +49,8 @@ class MeterResponse(BaseModel):
     manufacturer: Optional[str]
     model: Optional[str]
     notes: Optional[str]
-    created_at: str
-    updated_at: str
-
-    class Config:
-        from_attributes = True
+    created_at: datetime
+    updated_at: datetime
 
 
 class MeterReadingCreate(BaseModel):
@@ -63,6 +62,8 @@ class MeterReadingCreate(BaseModel):
 
 
 class MeterReadingResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: str
     meter_id: str
     reading_value: int
@@ -70,10 +71,7 @@ class MeterReadingResponse(BaseModel):
     reading_type: Optional[str]
     reader_name: Optional[str]
     billrun_id: Optional[str]
-    created_at: str
-
-    class Config:
-        from_attributes = True
+    created_at: datetime
 
 
 @router.get("", response_model=List[MeterResponse])
@@ -95,7 +93,7 @@ def list_meters(
         query = query.filter(Meter.client_id == client_id)
     
     meters = query.order_by(Meter.meter_type, Meter.meter_number).all()
-    return meters
+    return [MeterResponse.model_validate(m) for m in meters]
 
 
 @router.get("/{meter_id}", response_model=MeterResponse)
@@ -113,7 +111,7 @@ def get_meter(
     if not meter:
         raise HTTPException(status_code=404, detail="Zähler nicht gefunden")
     
-    return meter
+    return MeterResponse.model_validate(meter)
 
 
 @router.post("", response_model=MeterResponse, status_code=201)
@@ -154,7 +152,7 @@ def create_meter(
     db.commit()
     db.refresh(meter)
     
-    return meter
+    return MeterResponse.model_validate(meter)
 
 
 @router.put("/{meter_id}", response_model=MeterResponse)
@@ -180,7 +178,7 @@ def update_meter(
     db.commit()
     db.refresh(meter)
     
-    return meter
+    return MeterResponse.model_validate(meter)
 
 
 @router.delete("/{meter_id}", status_code=204)
@@ -223,7 +221,7 @@ def list_meter_readings(
         MeterReading.meter_id == meter_id
     ).order_by(MeterReading.reading_date.desc()).all()
     
-    return readings
+    return [MeterReadingResponse.model_validate(r) for r in readings]
 
 
 @router.post("/{meter_id}/readings", response_model=MeterReadingResponse, status_code=201)
@@ -252,5 +250,5 @@ def create_meter_reading(
     db.commit()
     db.refresh(reading)
     
-    return reading
+    return MeterReadingResponse.model_validate(reading)
 
