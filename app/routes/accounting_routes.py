@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from typing import List, Optional
 from datetime import date, datetime
 from decimal import Decimal
@@ -752,9 +753,9 @@ def check_meter_readings(
     
     meters = db.query(Meter).filter(
         Meter.client_id == accounting.client_id,
-        (
-            (Meter.unit_id.in_(unit_ids)) |
-            (Meter.property_id.in_(property_ids))
+        or_(
+            Meter.unit_id.in_(unit_ids) if unit_ids else False,
+            Meter.property_id.in_(property_ids) if property_ids else False
         )
     ).all()
     
