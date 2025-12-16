@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import date
+from datetime import date, datetime
 from ..db import get_db
 from ..models.user import User
 from ..models.ticket import Ticket, TicketComment, TicketAttachment, TicketCategory, TicketPriority, TicketStatus
 from ..utils.deps import get_current_user
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 router = APIRouter(prefix="/api/tickets", tags=["Tickets"])
 
@@ -43,6 +43,8 @@ class TicketCommentCreate(BaseModel):
 
 
 class TicketResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: str
     client_id: str
     title: str
@@ -58,11 +60,8 @@ class TicketResponse(BaseModel):
     resolved_at: Optional[date]
     estimated_cost: Optional[str]
     actual_cost: Optional[str]
-    created_at: str
-    updated_at: str
-
-    class Config:
-        from_attributes = True
+    created_at: datetime
+    updated_at: datetime
 
 
 @router.get("", response_model=List[TicketResponse])
@@ -91,7 +90,7 @@ def list_tickets(
         query = query.filter(Ticket.property_id == property_id)
     
     tickets = query.order_by(Ticket.created_at.desc()).all()
-    return tickets
+    return [TicketResponse.model_validate(ticket) for ticket in tickets]
 
 
 @router.post("", response_model=TicketResponse, status_code=201)
@@ -105,14 +104,14 @@ def create_ticket(
     ticket = Ticket(
         owner_id=current_user.id,
         client_id=client_id,
-        **ticket_data.dict()
+        **ticket_data.model_dump()
     )
     
     db.add(ticket)
     db.commit()
     db.refresh(ticket)
     
-    return ticket
+    return TicketResponse.model_validate(ticket)
 
 
 @router.get("/{ticket_id}", response_model=TicketResponse)
@@ -130,7 +129,7 @@ def get_ticket(
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket nicht gefunden")
     
-    return ticket
+    return TicketResponse.model_validate(ticket)
 
 
 @router.put("/{ticket_id}", response_model=TicketResponse)
@@ -149,7 +148,7 @@ def update_ticket(
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket nicht gefunden")
     
-    update_data = ticket_data.dict(exclude_unset=True)
+    update_data = ticket_data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(ticket, key, value)
     
@@ -160,7 +159,7 @@ def update_ticket(
     db.commit()
     db.refresh(ticket)
     
-    return ticket
+    return TicketResponse.model_validate(ticket)
 
 
 @router.post("/{ticket_id}/comments", status_code=201)

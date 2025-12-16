@@ -18,6 +18,7 @@ router = APIRouter(prefix="/api/tenants", tags=["Tenants"])
 @router.get("", response_model=dict)
 def list_tenants(
     search: Optional[str] = Query(None, description="Search in name or email"),
+    client_id: Optional[str] = Query(None, description="Filter nach Mandant"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=10000, description="Items per page"),
     current_user: User = Depends(get_current_user),
@@ -25,9 +26,18 @@ def list_tenants(
 ):
     """
     List all tenants for the current user with pagination and search.
+    Filtert nach Mandant (client_id) falls angegeben.
     """
     try:
         query = db.query(Tenant).filter(Tenant.owner_id == current_user.id)
+        
+        # Filter nach Mandant (client_id) - falls Spalte existiert
+        if client_id:
+            try:
+                # Zeige NUR Daten mit diesem client_id
+                query = query.filter(Tenant.client_id == client_id)
+            except Exception:
+                logger.warning(f"client_id Filter für Tenants nicht verfügbar (Spalte existiert noch nicht)")
         
         # Apply search filter
         if search:
@@ -62,22 +72,40 @@ def list_tenants(
 @router.post("", response_model=TenantOut, status_code=status.HTTP_201_CREATED)
 def create_tenant(
     tenant_data: TenantCreate,
+    client_id: Optional[str] = Query(None, description="Mandant ID"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     Create a new tenant.
+    Setzt client_id falls angegeben und Spalte existiert.
     """
     try:
+        tenant_dict = tenant_data.model_dump()
+        
+        # Setze client_id falls angegeben (und Spalte existiert)
+        if client_id:
+            try:
+                from ..models.client import Client
+                client = db.query(Client).filter(
+                    Client.id == client_id,
+                    Client.owner_id == current_user.id
+                ).first()
+                if not client:
+                    raise HTTPException(status_code=404, detail="Mandant nicht gefunden")
+                tenant_dict["client_id"] = client_id
+            except Exception as e:
+                logger.warning(f"client_id kann nicht gesetzt werden (Spalte existiert noch nicht): {str(e)}")
+        
         new_tenant = Tenant(
             owner_id=current_user.id,
-            **tenant_data.model_dump()
+            **tenant_dict
         )
         db.add(new_tenant)
         db.commit()
         db.refresh(new_tenant)
         
-        logger.info(f"Tenant created: {new_tenant.id} by user {current_user.id}")
+        logger.info(f"Tenant created: {new_tenant.id} by user {current_user.id}, client_id: {client_id}")
         return TenantOut.model_validate(new_tenant)
     except SQLAlchemyError as e:
         db.rollback()

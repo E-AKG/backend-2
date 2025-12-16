@@ -163,8 +163,9 @@ def spotlight_search(
             func.lower(Unit.unit_label).like(search_term)
         )
     )
-    if client_id:
-        leases_query = leases_query.filter(Lease.client_id == client_id)
+    # TODO: Add client_id filter after migration
+    # if client_id:
+    #     leases_query = leases_query.filter(Lease.client_id == client_id)
     
     leases = leases_query.limit(5).all()
     for lease in leases:

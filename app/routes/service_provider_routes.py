@@ -6,7 +6,8 @@ from ..models.user import User
 from ..models.service_provider import ServiceProvider, ServiceProviderType
 from ..models.client import Client
 from ..utils.deps import get_current_user
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+from datetime import datetime
 
 router = APIRouter()
 
@@ -44,6 +45,8 @@ class ServiceProviderUpdate(BaseModel):
 
 
 class ServiceProviderOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: str
     client_id: str
     company_name: Optional[str]
@@ -59,11 +62,8 @@ class ServiceProviderOut(BaseModel):
     bank_name: Optional[str]
     rating: Optional[int]
     notes: Optional[str]
-    created_at: str
-    updated_at: str
-
-    class Config:
-        from_attributes = True
+    created_at: datetime
+    updated_at: datetime
 
 
 @router.get("/api/service-providers", response_model=List[ServiceProviderOut])

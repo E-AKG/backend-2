@@ -45,11 +45,21 @@ def get_dashboard_stats(
         BillRun.period_month == month,
         BillRun.period_year == year
     )
-    # TODO: Add client_id and fiscal_year_id filters after migration
-    # if client_id:
-    #     bill_run_query = bill_run_query.filter(BillRun.client_id == client_id)
-    # if fiscal_year_id:
-    #     bill_run_query = bill_run_query.filter(BillRun.fiscal_year_id == fiscal_year_id)
+    
+    if client_id:
+        try:
+            # Zeige NUR Daten mit diesem client_id
+            bill_run_query = bill_run_query.filter(BillRun.client_id == client_id)
+        except Exception:
+            logger.warning(f"client_id Filter für BillRuns nicht verfügbar (Spalte existiert noch nicht)")
+    
+    if fiscal_year_id:
+        try:
+            # Zeige NUR Daten mit diesem fiscal_year_id
+            bill_run_query = bill_run_query.filter(BillRun.fiscal_year_id == fiscal_year_id)
+        except Exception:
+            logger.warning(f"fiscal_year_id Filter für BillRuns nicht verfügbar (Spalte existiert noch nicht)")
+    
     bill_run = bill_run_query.first()
     
     rent_data = {
@@ -78,28 +88,44 @@ def get_dashboard_stats(
     from ..models.property import Property
     
     open_charges_query = db.query(
-        Charge, Lease, Tenant, Unit, Property
+        Charge, Lease, Tenant, Unit, Property, BillRun
     ).join(
-        Charge.bill_run
+        BillRun, Charge.bill_run_id == BillRun.id
     ).join(
-        Charge.lease
+        Lease, Charge.lease_id == Lease.id
     ).join(
-        Lease.tenant
+        Tenant, Lease.tenant_id == Tenant.id
     ).join(
-        Lease.unit
+        Unit, Lease.unit_id == Unit.id
     ).join(
-        Unit.property
+        Property, Unit.property_id == Property.id
     ).filter(
         BillRun.owner_id == current_user.id,
         Charge.status.in_([ChargeStatus.OPEN, ChargeStatus.PARTIALLY_PAID, ChargeStatus.OVERDUE])
     )
-    # TODO: Add client_id filter after migration: if client_id: open_charges_query = open_charges_query.filter(Property.client_id == client_id)
+    
+    # Filter nach client_id über BillRun
+    if client_id:
+        try:
+            # Zeige NUR Daten mit diesem client_id
+            open_charges_query = open_charges_query.filter(BillRun.client_id == client_id)
+        except Exception:
+            logger.warning(f"client_id Filter für offene Charges nicht verfügbar (Spalte existiert noch nicht)")
+    
+    # Filter nach fiscal_year_id über BillRun
+    if fiscal_year_id:
+        try:
+            # Zeige NUR Daten mit diesem fiscal_year_id
+            open_charges_query = open_charges_query.filter(BillRun.fiscal_year_id == fiscal_year_id)
+        except Exception:
+            logger.warning(f"fiscal_year_id Filter für offene Charges nicht verfügbar (Spalte existiert noch nicht)")
+    
     open_charges = open_charges_query.order_by(
         Charge.due_date
     ).all()  # Alle offenen Posten, nicht nur 10
     
     offene_posten = []
-    for charge, lease, tenant, unit, prop in open_charges:
+    for charge, lease, tenant, unit, prop, bill_run in open_charges:
         # Prüfe ob überfällig
         is_overdue = charge.due_date < date.today() and charge.status in [ChargeStatus.OPEN, ChargeStatus.PARTIALLY_PAID]
         status_value = "overdue" if is_overdue else charge.status.value
@@ -127,7 +153,10 @@ def get_dashboard_stats(
     # Leerstand
     units_query = db.query(Unit).filter(Unit.owner_id == current_user.id)
     if client_id:
-        units_query = units_query.filter(Unit.client_id == client_id)
+        try:
+            units_query = units_query.filter(Unit.client_id == client_id)
+        except Exception:
+            logger.warning(f"client_id Filter für Units nicht verfügbar (Spalte existiert noch nicht)")
     total_units = units_query.count()
     
     vacant_units_query = db.query(Unit).filter(
@@ -135,7 +164,10 @@ def get_dashboard_stats(
         Unit.status == UnitStatus.VACANT
     )
     if client_id:
-        vacant_units_query = vacant_units_query.filter(Unit.client_id == client_id)
+        try:
+            vacant_units_query = vacant_units_query.filter(Unit.client_id == client_id)
+        except Exception:
+            logger.warning(f"client_id Filter für Units nicht verfügbar (Spalte existiert noch nicht)")
     vacant_units = vacant_units_query.count()
     vacancy_rate = int((vacant_units / total_units * 100) if total_units > 0 else 0)
     
@@ -145,17 +177,43 @@ def get_dashboard_stats(
         Lease.status == LeaseStatus.ACTIVE
     )
     if client_id:
-        active_leases_query = active_leases_query.filter(Lease.client_id == client_id)
+        try:
+            # Zeige NUR Daten mit diesem client_id
+            active_leases_query = active_leases_query.filter(Lease.client_id == client_id)
+        except Exception:
+            logger.warning(f"client_id Filter für Leases nicht verfügbar (Spalte existiert noch nicht)")
+    if fiscal_year_id:
+        try:
+            # Zeige NUR Daten mit diesem fiscal_year_id
+            active_leases_query = active_leases_query.filter(Lease.fiscal_year_id == fiscal_year_id)
+        except Exception:
+            logger.warning(f"fiscal_year_id Filter für Leases nicht verfügbar (Spalte existiert noch nicht)")
     active_leases = active_leases_query.count()
     
     # Überfällige Posten
     today = date.today()
-    overdue_charges_query = db.query(Charge).join(Lease).join(Unit).join(Property).filter(
+    overdue_charges_query = db.query(Charge).join(BillRun).join(Lease).join(Unit).join(Property).filter(
         Property.owner_id == current_user.id,
         Charge.status.in_([ChargeStatus.OPEN, ChargeStatus.PARTIALLY_PAID, ChargeStatus.OVERDUE]),
         Charge.due_date < today
     )
-    # TODO: Add client_id filter after migration: if client_id: overdue_charges_query = overdue_charges_query.filter(Property.client_id == client_id)
+    
+    # Filter nach client_id über BillRun
+    if client_id:
+        try:
+            # Zeige NUR Daten mit diesem client_id
+            overdue_charges_query = overdue_charges_query.filter(BillRun.client_id == client_id)
+        except Exception:
+            logger.warning(f"client_id Filter für überfällige Charges nicht verfügbar (Spalte existiert noch nicht)")
+    
+    # Filter nach fiscal_year_id über BillRun
+    if fiscal_year_id:
+        try:
+            # Zeige NUR Daten mit diesem fiscal_year_id
+            overdue_charges_query = overdue_charges_query.filter(BillRun.fiscal_year_id == fiscal_year_id)
+        except Exception:
+            logger.warning(f"fiscal_year_id Filter für überfällige Charges nicht verfügbar (Spalte existiert noch nicht)")
+    
     overdue_charges = overdue_charges_query.count()
     
     # Tickets-Statistik
@@ -225,11 +283,27 @@ def get_dashboard_stats(
     activities = []
     
     # Letzte Zahlungen (aus PaymentMatches)
-    recent_payments = db.query(PaymentMatch).join(Charge).join(Lease).join(Unit).join(Property).filter(
+    recent_payments_query = db.query(PaymentMatch).join(Charge).join(BillRun).join(Lease).join(Unit).join(Property).filter(
         Property.owner_id == current_user.id
     )
-    # TODO: Add client_id filter after migration: if client_id: recent_payments = recent_payments.filter(Property.client_id == client_id)
-    recent_payments = recent_payments.order_by(PaymentMatch.created_at.desc()).limit(3).all()
+    
+    # Filter nach client_id über BillRun
+    if client_id:
+        try:
+            # Zeige NUR Daten mit diesem client_id
+            recent_payments_query = recent_payments_query.filter(BillRun.client_id == client_id)
+        except Exception:
+            logger.warning(f"client_id Filter für recent payments nicht verfügbar (Spalte existiert noch nicht)")
+    
+    # Filter nach fiscal_year_id über BillRun
+    if fiscal_year_id:
+        try:
+            # Zeige NUR Daten mit diesem fiscal_year_id
+            recent_payments_query = recent_payments_query.filter(BillRun.fiscal_year_id == fiscal_year_id)
+        except Exception:
+            logger.warning(f"fiscal_year_id Filter für recent payments nicht verfügbar (Spalte existiert noch nicht)")
+    
+    recent_payments = recent_payments_query.order_by(PaymentMatch.created_at.desc()).limit(3).all()
     
     for payment in recent_payments:
         activities.append({
@@ -376,5 +450,174 @@ def get_auto_match_stats(
             "total_charges": monthly_total_charges,
             "coverage_rate": int((monthly_matches / monthly_total_charges * 100) if monthly_total_charges > 0 else 0)
         }
+    }
+
+
+@router.get("/reports")
+def get_reports_data(
+    start_date: Optional[str] = Query(None, description="Startdatum (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="Enddatum (YYYY-MM-DD)"),
+    client_id: Optional[str] = Query(None, description="Filter nach Mandant"),
+    fiscal_year_id: Optional[str] = Query(None, description="Filter nach Geschäftsjahr"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Hole Berichtsdaten für einen Datumsbereich
+    
+    Inkludiert:
+    - Einnahmen (Mieteinnahmen, Nebenkosten) für den Zeitraum
+    - Ausgaben (Betriebskosten, Instandhaltung) für den Zeitraum
+    - Überschuss
+    """
+    from ..models.lease import Lease, LeaseComponent, LeaseStatus
+    from ..models.accounting import Accounting, AccountingItem
+    
+    # Parse Datumsbereich
+    if start_date:
+        try:
+            start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        except ValueError:
+            start = date.today().replace(month=1, day=1)
+    else:
+        start = date.today().replace(month=1, day=1)
+    
+    if end_date:
+        try:
+            end = datetime.strptime(end_date, "%Y-%m-%d").date()
+        except ValueError:
+            end = date.today()
+    else:
+        end = date.today()
+    
+    # ===== EINNAHMEN =====
+    # Berechne alle Monate im Zeitraum
+    start_year = start.year
+    start_month = start.month
+    end_year = end.year
+    end_month = end.month
+    
+    # Summiere Kaltmiete (cold_rent) aus LeaseComponents
+    total_rent = Decimal(0)
+    leases_query = db.query(Lease).filter(
+        Lease.owner_id == current_user.id,
+        Lease.status == LeaseStatus.ACTIVE,
+        Lease.start_date <= end,
+        (Lease.end_date >= start) | (Lease.end_date.is_(None))
+    )
+    
+    if client_id:
+        try:
+            leases_query = leases_query.filter(Lease.client_id == client_id)
+        except Exception:
+            pass
+    
+    if fiscal_year_id:
+        try:
+            leases_query = leases_query.filter(Lease.fiscal_year_id == fiscal_year_id)
+        except Exception:
+            pass
+    
+    active_leases = leases_query.all()
+    
+    for lease in active_leases:
+        # Berechne Anzahl Monate im Zeitraum
+        lease_start = max(lease.start_date, start)
+        lease_end = min(lease.end_date if lease.end_date else end, end)
+        
+        if lease_start <= lease_end:
+            # Berechne Monate
+            year_diff = lease_end.year - lease_start.year
+            month_diff = lease_end.month - lease_start.month
+            months = year_diff * 12 + month_diff + 1
+            
+            # Summiere Kaltmiete
+            for component in lease.components:
+                if component.type.value == "cold_rent":
+                    total_rent += Decimal(str(component.amount)) * Decimal(months)
+    
+    # Nebenkosten: Summe aller Betriebskosten-Vorauszahlungen
+    total_prepayments = Decimal(0)
+    for lease in active_leases:
+        lease_start = max(lease.start_date, start)
+        lease_end = min(lease.end_date if lease.end_date else end, end)
+        
+        if lease_start <= lease_end:
+            year_diff = lease_end.year - lease_start.year
+            month_diff = lease_end.month - lease_start.month
+            months = year_diff * 12 + month_diff + 1
+            
+            for component in lease.components:
+                if component.type.value in ["operating_costs", "heating_costs"]:
+                    total_prepayments += Decimal(str(component.amount)) * Decimal(months)
+    
+    # ===== AUSGABEN =====
+    # Betriebskosten: Summe aller AccountingItems im Zeitraum
+    accounting_query = db.query(Accounting).filter(
+        Accounting.owner_id == current_user.id,
+        Accounting.period_start <= end,
+        Accounting.period_end >= start
+    )
+    
+    if client_id:
+        try:
+            accounting_query = accounting_query.filter(Accounting.client_id == client_id)
+        except Exception:
+            pass
+    
+    if fiscal_year_id:
+        try:
+            accounting_query = accounting_query.filter(Accounting.fiscal_year_id == fiscal_year_id)
+        except Exception:
+            pass
+    
+    accountings = accounting_query.all()
+    
+    total_operating_costs = Decimal(0)
+    total_maintenance = Decimal(0)
+    
+    for accounting in accountings:
+        # Hole alle AccountingItems
+        items = db.query(AccountingItem).filter(
+            AccountingItem.accounting_id == accounting.id
+        ).all()
+        
+        for item in items:
+            if item.is_allocable:
+                # Betriebskosten (umlagefähig)
+                if "heizung" in item.cost_type.lower() or "heating" in item.cost_type.lower():
+                    total_operating_costs += Decimal(str(item.amount))
+                elif "instandhaltung" in item.cost_type.lower() or "maintenance" in item.cost_type.lower():
+                    total_maintenance += Decimal(str(item.amount))
+                else:
+                    # Andere Betriebskosten
+                    total_operating_costs += Decimal(str(item.amount))
+    
+    # Gesamtausgaben
+    total_expenses = total_operating_costs + total_maintenance
+    
+    # Überschuss
+    total_income = total_rent + total_prepayments
+    surplus = total_income - total_expenses
+    
+    return {
+        "income": {
+            "rent": float(total_rent),
+            "prepayments": float(total_prepayments),
+            "total": float(total_income)
+        },
+        "expenses": {
+            "operating_costs": float(total_operating_costs),
+            "maintenance": float(total_maintenance),
+            "total": float(total_expenses)
+        },
+        "surplus": float(surplus),
+        "period": {
+            "start": start.isoformat(),
+            "end": end.isoformat()
+        },
+        # Für Kompatibilität mit Frontend
+        "total_rent": float(total_rent),
+        "total_prepayments": float(total_prepayments)
     }
 

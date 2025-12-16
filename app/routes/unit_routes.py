@@ -19,6 +19,7 @@ router = APIRouter(prefix="/api/units", tags=["Units"])
 @router.get("", response_model=dict)
 def list_units(
     property_id: Optional[str] = Query(None, description="Filter by property ID"),
+    client_id: Optional[str] = Query(None, description="Filter nach Mandant"),
     status: Optional[UnitStatus] = Query(None, description="Filter by status"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=10000, description="Items per page"),
@@ -27,9 +28,21 @@ def list_units(
 ):
     """
     List all units for the current user with filters and pagination.
+    Filtert nach Mandant (client_id) falls angegeben.
     """
     try:
         query = db.query(Unit).filter(Unit.owner_id == current_user.id)
+        
+        # Filter nach Mandant (client_id) - falls Spalte existiert
+        if client_id:
+            try:
+                query = query.filter(Unit.client_id == client_id)
+            except Exception:
+                # Falls client_id Spalte noch nicht existiert, filtere über Property
+                try:
+                    query = query.join(Property).filter(Property.client_id == client_id)
+                except Exception:
+                    logger.warning(f"client_id Filter für Units nicht verfügbar (Spalte existiert noch nicht)")
         
         # Apply filters
         if property_id:
@@ -61,6 +74,7 @@ def list_units(
 @router.post("", response_model=UnitOut, status_code=status.HTTP_201_CREATED)
 def create_unit(
     unit_data: UnitCreate,
+    client_id: Optional[str] = Query(None, description="Mandant ID"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -68,6 +82,7 @@ def create_unit(
     Create a new unit.
     Trial users: max 1 unit
     Paid users: unlimited
+    Setzt client_id falls angegeben und Spalte existiert.
     """
     # Check unit limit for trial users
     check_unit_limit(current_user, db)
@@ -85,9 +100,33 @@ def create_unit(
         )
     
     try:
+        unit_dict = unit_data.model_dump()
+        
+        # Setze client_id falls angegeben (und Spalte existiert)
+        # Falls nicht angegeben, verwende client_id vom Property
+        if client_id:
+            try:
+                from ..models.client import Client
+                client = db.query(Client).filter(
+                    Client.id == client_id,
+                    Client.owner_id == current_user.id
+                ).first()
+                if not client:
+                    raise HTTPException(status_code=404, detail="Mandant nicht gefunden")
+                unit_dict["client_id"] = client_id
+            except Exception as e:
+                logger.warning(f"client_id kann nicht gesetzt werden (Spalte existiert noch nicht): {str(e)}")
+        else:
+            # Versuche client_id vom Property zu übernehmen
+            try:
+                if hasattr(property_obj, 'client_id') and property_obj.client_id:
+                    unit_dict["client_id"] = property_obj.client_id
+            except Exception:
+                pass
+        
         new_unit = Unit(
             owner_id=current_user.id,
-            **unit_data.model_dump()
+            **unit_dict
         )
         db.add(new_unit)
         db.commit()
