@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_HOURS: int = 24  # 24 Stunden für längere Sessions (kann über .env überschrieben werden)
+    JWT_PORTAL_ACCESS_TOKEN_EXPIRE_HOURS: int = 24  # 24 Stunden für Portal-User (kann über .env überschrieben werden)
     
     # SMTP (Fallback, wenn SendGrid API nicht verwendet wird)
     SMTP_HOST: Optional[str] = None
@@ -26,6 +27,9 @@ class Settings(BaseSettings):
     
     # Backend (für Verifizierungs-Links in E-Mails)
     BACKEND_URL: Optional[str] = None  # Falls nicht gesetzt, wird FRONTEND_URL verwendet
+    
+    # CORS (optional, falls nicht gesetzt werden Standard-Origins verwendet)
+    CORS_ORIGINS: Optional[str] = None  # Komma-separierte Liste von Origins (z.B. "https://immpire.com,https://www.immpire.com")
     
     # App
     APP_NAME: str = "IZENIC ImmoAssist API"
