@@ -102,7 +102,19 @@ def generate_reminder_pdf(
     output_path = PDF_OUTPUT_DIR / output_filename
     
     try:
-        HTML(string=html_content).write_pdf(output_path)
+        # Workaround für WeasyPrint-Kompatibilitätsprobleme
+        try:
+            HTML(string=html_content).write_pdf(output_path)
+        except AttributeError as attr_error:
+            if "'super' object has no attribute 'transform'" in str(attr_error):
+                logger.warning("⚠️ WeasyPrint Kompatibilitätsproblem erkannt. Versuche mit optimierten Optionen...")
+                HTML(string=html_content).write_pdf(
+                    output_path,
+                    optimize_images=False,
+                    presentational_hints=True
+                )
+            else:
+                raise
         logger.info(f"✅ PDF generiert: {output_path}")
         return str(output_path)
     except Exception as e:
@@ -359,11 +371,31 @@ def generate_accounting_pdf(
     output_path = PDF_OUTPUT_DIR / output_filename
     
     try:
-        HTML(string=html_content).write_pdf(output_path)
+        # Versuche PDF-Generierung mit WeasyPrint
+        # Workaround für bekannte WeasyPrint-Kompatibilitätsprobleme mit Python 3.13
+        try:
+            HTML(string=html_content).write_pdf(output_path)
+        except AttributeError as attr_error:
+            if "'super' object has no attribute 'transform'" in str(attr_error):
+                logger.warning("⚠️ WeasyPrint Kompatibilitätsproblem erkannt. Versuche mit optimierten Optionen...")
+                # Versuche mit optimierten Optionen als Workaround
+                try:
+                    HTML(string=html_content).write_pdf(
+                        output_path,
+                        optimize_images=False,
+                        presentational_hints=True
+                    )
+                except Exception as e2:
+                    logger.error(f"❌ Auch Workaround fehlgeschlagen: {str(e2)}")
+                    raise attr_error  # Re-raise original error
+            else:
+                raise
         logger.info(f"✅ Abrechnungs-PDF generiert: {output_path}")
         return str(output_path)
     except Exception as e:
         logger.error(f"❌ Fehler beim Generieren der Abrechnungs-PDF: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
         raise
 
 
@@ -407,7 +439,19 @@ def generate_settlement_pdf(
     output_path = PDF_OUTPUT_DIR / output_filename
     
     try:
-        HTML(string=html_content).write_pdf(output_path)
+        # Workaround für WeasyPrint-Kompatibilitätsprobleme
+        try:
+            HTML(string=html_content).write_pdf(output_path)
+        except AttributeError as attr_error:
+            if "'super' object has no attribute 'transform'" in str(attr_error):
+                logger.warning("⚠️ WeasyPrint Kompatibilitätsproblem erkannt. Versuche mit optimierten Optionen...")
+                HTML(string=html_content).write_pdf(
+                    output_path,
+                    optimize_images=False,
+                    presentational_hints=True
+                )
+            else:
+                raise
         logger.info(f"✅ Einzelabrechnungs-PDF generiert: {output_path}")
         return str(output_path)
     except Exception as e:
