@@ -222,19 +222,25 @@ def calculate_accounting(
     if not accounting:
         raise HTTPException(status_code=404, detail="Abrechnung nicht gefunden")
     
-    # Hole alle aktiven Verträge im Zeitraum - NUR für diesen Mandant
-    active_leases_query = db.query(Lease).join(Unit).join(Property).filter(
+    # Hole ALLE Verträge, die im Zeitraum aktiv waren (auch beendete!)
+    # WICHTIG: Ein Vertrag muss berücksichtigt werden, wenn er den Zeitraum überlappt
+    # - start_date <= period_end UND
+    # - (end_date IS NULL ODER end_date >= period_start)
+    # Status kann ACTIVE oder ENDED sein (solange Overlap stimmt)
+    leases_in_period_query = db.query(Lease).join(Unit).join(Property).filter(
         Property.owner_id == current_user.id,
-        Lease.status == LeaseStatus.ACTIVE,
+        # Vertrag muss den Zeitraum überlappen
         Lease.start_date <= accounting.period_end,
-        (Lease.end_date.is_(None) | (Lease.end_date >= accounting.period_start))
+        (Lease.end_date.is_(None) | (Lease.end_date >= accounting.period_start)),
+        # Status: ACTIVE oder ENDED (beide können im Zeitraum relevant sein)
+        Lease.status.in_([LeaseStatus.ACTIVE, LeaseStatus.ENDED])
     )
     
     # Filter nach client_id der Abrechnung
     if accounting.client_id:
         try:
             # Filter über Lease.client_id ODER Property.client_id
-            active_leases_query = active_leases_query.filter(
+            leases_in_period_query = leases_in_period_query.filter(
                 (Lease.client_id == accounting.client_id) | (Property.client_id == accounting.client_id)
             )
         except Exception:
@@ -243,11 +249,11 @@ def calculate_accounting(
     # Filter nach fiscal_year_id der Abrechnung
     if accounting.fiscal_year_id:
         try:
-            active_leases_query = active_leases_query.filter(Lease.fiscal_year_id == accounting.fiscal_year_id)
+            leases_in_period_query = leases_in_period_query.filter(Lease.fiscal_year_id == accounting.fiscal_year_id)
         except Exception:
             logger.warning(f"fiscal_year_id Filter für Leases nicht verfügbar (Spalte existiert noch nicht)")
     
-    active_leases = active_leases_query.all()
+    leases_in_period = leases_in_period_query.all()
     
     # Hole ALLE Einheiten für die Umlage (auch leere Einheiten)
     # Dies ermöglicht es, Leerstand zu berücksichtigen
@@ -272,15 +278,18 @@ def calculate_accounting(
         if unit.size_sqm:
             total_area += unit.size_sqm
     
-    # Erstelle Mapping: unit_id -> aktiver Vertrag im Zeitraum
-    unit_to_lease = {}
-    for lease in active_leases:
+    # Erstelle Mapping: unit_id -> Liste aller Verträge im Zeitraum
+    # WICHTIG: Eine Einheit kann mehrere Verträge haben (Mieterwechsel)
+    unit_to_leases = {}
+    for lease in leases_in_period:
         if lease.unit_id:
             # Prüfe ob Vertrag im Abrechnungszeitraum aktiv ist
             lease_start = max(lease.start_date, accounting.period_start)
             lease_end = min(lease.end_date if lease.end_date else accounting.period_end, accounting.period_end)
             if lease_start <= lease_end:
-                unit_to_lease[lease.unit_id] = lease
+                if lease.unit_id not in unit_to_leases:
+                    unit_to_leases[lease.unit_id] = []
+                unit_to_leases[lease.unit_id].append(lease)
     
     # Hole alle Kostenposten
     items = db.query(AccountingItem).filter(
@@ -299,11 +308,12 @@ def calculate_accounting(
     total_advance = Decimal(0)
     total_settlement = Decimal(0)
     
+    period_start = accounting.period_start
+    period_end = accounting.period_end
+    total_days_in_period = (period_end - period_start).days + 1 if period_start and period_end else 365
+    
     # Verarbeite alle Einheiten (auch leere)
     for unit in all_units:
-        lease = unit_to_lease.get(unit.id)
-        tenant = lease.tenant if lease else None
-        
         # Berechne Anteil basierend auf Umlageschlüssel
         if allocation_method == "area" and unit.size_sqm and total_area > 0:
             allocation_factor = Decimal(unit.size_sqm) / Decimal(total_area)
@@ -312,95 +322,124 @@ def calculate_accounting(
         else:
             allocation_factor = Decimal(1) / Decimal(total_units) if total_units > 0 else Decimal(0)
         
-        allocated_costs = Decimal(str(total_allocable_costs)) * allocation_factor
+        # Gesamtkostenanteil dieser Einheit (unabhängig von Belegung)
+        unit_total_costs = Decimal(str(total_allocable_costs)) * allocation_factor
         
-        # Hole Vorauszahlungen aus Lease Components
-        advance_payments = Decimal(0)
+        # Hole alle Verträge dieser Einheit im Zeitraum
+        unit_leases = unit_to_leases.get(unit.id, [])
         
-        # Berechne genaue Tage für anteilige Berechnung
-        period_start = accounting.period_start
-        period_end = accounting.period_end
+        # Berechne belegte Tage aus allen Verträgen
+        occupied_days = 0
+        occupied_periods = []  # Liste von (start, end) Tupeln
         
-        # Berechne Gesamttage im Abrechnungszeitraum (inklusive)
-        if period_start and period_end:
-            total_days_in_period = (period_end - period_start).days + 1  # +1 weil beide Tage inklusive sind
+        for lease in unit_leases:
+            lease_start = max(lease.start_date, period_start)
+            lease_end = min(lease.end_date if lease.end_date else period_end, period_end)
             
-            # Prüfe ob Vertrag im Zeitraum aktiv war
-            if lease:
-                lease_start = max(lease.start_date, period_start)
-                lease_end = min(lease.end_date if lease.end_date else period_end, period_end)
+            if lease_start <= lease_end:
+                lease_days = (lease_end - lease_start).days + 1
+                occupied_periods.append((lease_start, lease_end, lease, lease_days))
+        
+        # Sortiere Perioden nach Startdatum
+        occupied_periods.sort(key=lambda x: x[0])
+        
+        # Berechne Gesamte belegte Tage (berücksichtige Überlappungen)
+        if occupied_periods:
+            # Merge überlappende Perioden
+            merged_periods = []
+            current_start, current_end, current_lease, current_days = occupied_periods[0]
+            
+            for start, end, lease, days in occupied_periods[1:]:
+                if start <= current_end:  # Überlappung
+                    current_end = max(current_end, end)
+                    current_days = (current_end - current_start).days + 1
+                else:  # Keine Überlappung
+                    merged_periods.append((current_start, current_end, current_lease, current_days))
+                    current_start, current_end, current_lease, current_days = start, end, lease, days
+            
+            merged_periods.append((current_start, current_end, current_lease, current_days))
+            
+            # Summiere belegte Tage
+            occupied_days = sum(days for _, _, _, days in merged_periods)
+            
+            # Erstelle Settlement für jeden Vertrag
+            for lease_start, lease_end, lease, lease_days in merged_periods:
+                tenant = lease.tenant
                 
-                # Berechne tatsächliche Tage, die der Vertrag im Abrechnungszeitraum aktiv war
-                if lease_start <= lease_end:
-                    actual_days = (lease_end - lease_start).days + 1  # +1 weil beide Tage inklusive sind
-                else:
-                    actual_days = 0
-            else:
-                # Leerstand: Einheit hatte keinen Vertrag im Zeitraum
-                # Anteilige Kosten werden trotzdem zugeordnet (z.B. für Leerstand vom 1.4. bis 31.5.)
-                # Aber keine Vorauszahlungen
-                actual_days = 0
-            
-            # Anteiliger Faktor basierend auf Tagen
-            if total_days_in_period > 0:
-                time_factor = Decimal(actual_days) / Decimal(total_days_in_period)
-            else:
-                time_factor = Decimal(0)
+                # Anteiliger Faktor für diesen Vertrag
+                time_factor = Decimal(lease_days) / Decimal(total_days_in_period)
+                
+                # Anteilige Kosten für diesen Vertrag
+                allocated_costs_proportional = unit_total_costs * time_factor
+                
+                # Berechne Vorauszahlungen für diesen Vertrag
+                advance_payments = Decimal(0)
+                for component in lease.components:
+                    if component.type.value in ["operating_costs", "heating_costs"]:
+                        monthly_advance = Decimal(str(component.amount))
+                        if total_days_in_period > 0:
+                            months_proportional = Decimal(lease_days) / Decimal(total_days_in_period) * Decimal(12)
+                        else:
+                            months_proportional = Decimal(0)
+                        advance_payments += monthly_advance * months_proportional
+                
+                settlement_amount = allocated_costs_proportional - advance_payments
+                
+                settlement = UnitSettlement(
+                    accounting_id=accounting_id,
+                    unit_id=unit.id,
+                    lease_id=lease.id,
+                    tenant_id=tenant.id if tenant else None,
+                    advance_payments=advance_payments,
+                    allocated_costs=allocated_costs_proportional,
+                    settlement_amount=settlement_amount,
+                    period_start=period_start,
+                    period_end=period_end,
+                    lease_period_start=lease_start,
+                    lease_period_end=lease_end,
+                    days_in_period=total_days_in_period,
+                    days_occupied=lease_days
+                )
+                
+                db.add(settlement)
+                total_advance += advance_payments
+                total_settlement += settlement_amount
         else:
-            total_days_in_period = 365  # Fallback: 1 Jahr
-            actual_days = 365 if lease else 0
-            time_factor = Decimal(1) if lease else Decimal(0)
+            # Keine Verträge: Kompletter Leerstand
+            occupied_days = 0
         
-        # Berechne anteilige Kosten basierend auf Zeitraum
-        # WICHTIG: Kosten werden anteilig zugeordnet basierend auf dem Zeitraum, in dem die Einheit bewohnt war
-        # Bei Leerstand (z.B. 1.4. bis 31.5.) werden die Kosten nur für die bewohnten Tage zugeordnet
-        allocated_costs_proportional = allocated_costs * time_factor
+        # Berechne Leerstand-Tage
+        vacant_days = total_days_in_period - occupied_days
         
-        # Berechne Vorauszahlungen anteilig basierend auf genauen Tagen
-        # Nur wenn Vertrag vorhanden ist
-        if lease:
-            for component in lease.components:
-                if component.type.value in ["operating_costs", "heating_costs"]:
-                    # Monatliche Vorauszahlung
-                    monthly_advance = Decimal(str(component.amount))
-                    # Berechne anteilige Vorauszahlung basierend auf Tagen
-                    # Konvertiere Tage in Monate (365 Tage = 12 Monate)
-                    if total_days_in_period > 0:
-                        months_proportional = Decimal(actual_days) / Decimal(total_days_in_period) * Decimal(12)
-                    else:
-                        months_proportional = Decimal(0)
-                    advance_payments += monthly_advance * months_proportional
-        # Bei Leerstand: keine Vorauszahlungen, anteilige Kosten werden nur für bewohnte Tage zugeordnet
-        
-        settlement_amount = allocated_costs_proportional - advance_payments
-        
-        # Bereite Zeitraum-Daten vor
-        lease_start_date = None
-        lease_end_date = None
-        if lease:
-            lease_start_date = max(lease.start_date, period_start) if period_start else lease.start_date
-            lease_end_date = min(lease.end_date if lease.end_date else period_end, period_end) if period_end else (lease.end_date if lease.end_date else None)
-        
-        settlement = UnitSettlement(
-            accounting_id=accounting_id,
-            unit_id=unit.id if unit else None,
-            lease_id=lease.id if lease else None,
-            tenant_id=tenant.id if tenant else None,
-            advance_payments=advance_payments,
-            allocated_costs=allocated_costs_proportional,  # Verwende anteilige Kosten
-            settlement_amount=settlement_amount,
-            # Speichere Zeiträume für bessere Nachvollziehbarkeit
-            period_start=period_start,
-            period_end=period_end,
-            lease_period_start=lease_start_date if lease_start_date and lease_start_date <= lease_end_date else None,
-            lease_period_end=lease_end_date if lease_start_date and lease_start_date <= lease_end_date else None,
-            days_in_period=total_days_in_period if period_start and period_end else None,
-            days_occupied=actual_days
-        )
-        
-        db.add(settlement)
-        total_advance += advance_payments
-        total_settlement += settlement_amount
+        # Erstelle Settlement für Leerstand (wenn vorhanden)
+        if vacant_days > 0:
+            # Anteiliger Faktor für Leerstand
+            vacant_time_factor = Decimal(vacant_days) / Decimal(total_days_in_period)
+            
+            # Anteilige Kosten für Leerstand (gehen auf Eigentümer)
+            vacant_costs = unit_total_costs * vacant_time_factor
+            
+            # Keine Vorauszahlungen für Leerstand
+            vacant_settlement_amount = vacant_costs - Decimal(0)  # = vacant_costs
+            
+            settlement = UnitSettlement(
+                accounting_id=accounting_id,
+                unit_id=unit.id,
+                lease_id=None,  # Kein Vertrag = Leerstand
+                tenant_id=None,  # Kein Mieter = Leerstand
+                advance_payments=Decimal(0),
+                allocated_costs=vacant_costs,
+                settlement_amount=vacant_settlement_amount,
+                period_start=period_start,
+                period_end=period_end,
+                lease_period_start=None,  # Leerstand hat keinen spezifischen Zeitraum
+                lease_period_end=None,
+                days_in_period=total_days_in_period,
+                days_occupied=0  # 0 belegte Tage = kompletter Leerstand
+            )
+            
+            db.add(settlement)
+            total_settlement += vacant_settlement_amount
     
     # Aktualisiere Abrechnung
     accounting.total_advance_payments = total_advance
@@ -415,8 +454,8 @@ def calculate_accounting(
         "total_advance_payments": float(total_advance),
         "total_settlement": float(total_settlement),
         "units_count": len(all_units),
-        "active_leases_count": len(active_leases),
-        "vacant_units_count": len(all_units) - len(active_leases)
+        "leases_in_period_count": len(leases_in_period),
+        "settlements_count": len(all_units)  # Geschätzt, wird durch tatsächliche Settlements überschrieben
     }
 
 
@@ -435,22 +474,39 @@ def get_settlements(
     if not accounting:
         raise HTTPException(status_code=404, detail="Abrechnung nicht gefunden")
     
-    settlements = db.query(UnitSettlement).filter(
+    # Lade Settlements mit Relations für vollständige Daten
+    from sqlalchemy.orm import joinedload
+    settlements = db.query(UnitSettlement).options(
+        joinedload(UnitSettlement.tenant),
+        joinedload(UnitSettlement.unit)
+    ).filter(
         UnitSettlement.accounting_id == accounting_id
     ).all()
     
     settlements_data = []
     for settlement in settlements:
+        # Prüfe ob Leerstand (kein Vertrag, kein Mieter)
+        is_vacancy = settlement.lease_id is None and settlement.tenant_id is None
+        
         settlements_data.append({
             "id": settlement.id,
             "unit_id": settlement.unit_id,
             "unit_label": settlement.unit.unit_label if settlement.unit else None,
+            "lease_id": settlement.lease_id,
             "tenant_id": settlement.tenant_id,
             "tenant_name": f"{settlement.tenant.first_name} {settlement.tenant.last_name}" if settlement.tenant else None,
             "advance_payments": float(settlement.advance_payments),
             "allocated_costs": float(settlement.allocated_costs),
             "settlement_amount": float(settlement.settlement_amount),
             "is_sent": settlement.is_sent,
+            # Zeitraum-Informationen
+            "period_start": settlement.period_start.isoformat() if settlement.period_start else None,
+            "period_end": settlement.period_end.isoformat() if settlement.period_end else None,
+            "lease_period_start": settlement.lease_period_start.isoformat() if settlement.lease_period_start else None,
+            "lease_period_end": settlement.lease_period_end.isoformat() if settlement.lease_period_end else None,
+            "days_in_period": settlement.days_in_period,
+            "days_occupied": settlement.days_occupied,
+            "is_vacancy": is_vacancy,  # Flag für Leerstand
         })
     
     return settlements_data
