@@ -446,6 +446,11 @@ def calculate_accounting(
     accounting.total_settlement = total_settlement
     accounting.status = AccountingStatus.CALCULATED
     
+    # Speichere Umlageschlüssel in meta_data
+    if not accounting.meta_data:
+        accounting.meta_data = {}
+    accounting.meta_data["allocation_method"] = allocation_method
+    
     db.commit()
     
     return {
@@ -551,6 +556,7 @@ def generate_accounting_documents(
     accounting = db.query(Accounting).options(
         joinedload(Accounting.items),
         joinedload(Accounting.unit_settlements).joinedload(UnitSettlement.tenant),
+        joinedload(Accounting.unit_settlements).joinedload(UnitSettlement.lease),
         joinedload(Accounting.unit_settlements).joinedload(UnitSettlement.unit).joinedload(Unit.property)
     ).filter(
         Accounting.id == accounting_id,
@@ -651,6 +657,60 @@ def generate_accounting_documents(
                 # Bereite Daten für Einzelabrechnung vor
                 settlement_items = items_data  # Alle Items für diese Abrechnung
                 
+                # Bereite Vorauszahlungs-Aufschlüsselung vor
+                advance_payments_breakdown = {
+                    "operating_costs": 0.0,
+                    "heating_costs": 0.0
+                }
+                
+                if settlement.lease_id and settlement.lease:
+                    lease = settlement.lease
+                    period_days = (accounting.period_end - accounting.period_start).days + 1
+                    occupied_days = settlement.days_occupied or 0
+                    
+                    if occupied_days > 0 and period_days > 0:
+                        months_proportional = Decimal(occupied_days) / Decimal(period_days) * Decimal(12)
+                        
+                        for component in lease.components:
+                            if component.type.value == "operating_costs":
+                                advance_payments_breakdown["operating_costs"] = float(Decimal(str(component.amount)) * months_proportional)
+                            elif component.type.value == "heating_costs":
+                                advance_payments_breakdown["heating_costs"] = float(Decimal(str(component.amount)) * months_proportional)
+                
+                # Trenne umlagefähige und nicht umlagefähige Items
+                allocable_items = [item for item in settlement_items if item.get("is_allocable", True)]
+                non_allocable_items = [item for item in settlement_items if not item.get("is_allocable", True)]
+                
+                # Berechne Mieteranteil pro Item (vereinfacht: proportional zur Gesamtkosten)
+                total_allocable = sum(item["amount"] for item in allocable_items)
+                if total_allocable > 0:
+                    tenant_share_factor = float(settlement.allocated_costs) / total_allocable
+                    for item in allocable_items:
+                        item["tenant_share"] = item["amount"] * tenant_share_factor
+                
+                # Umlageschlüssel-Label
+                allocation_key_labels = {
+                    "area": "nach Fläche (m²)",
+                    "units": "nach Einheiten",
+                    "persons": "nach Personen",
+                    "consumption": "nach Verbrauch"
+                }
+                allocation_key_label = allocation_key_labels.get(accounting.meta_data.get("allocation_method", "area"), "nach Fläche (m²)")
+                
+                # Zeitraum-Informationen
+                period_days = (accounting.period_end - accounting.period_start).days + 1
+                occupied_days = settlement.days_occupied or 0
+                tenant_period_start = None
+                tenant_period_end = None
+                
+                if settlement.lease_period_start and settlement.lease_period_end:
+                    tenant_period_start = settlement.lease_period_start
+                    tenant_period_end = settlement.lease_period_end
+                elif settlement.lease_id and settlement.lease:
+                    # Fallback: Verwende Lease-Zeiträume
+                    tenant_period_start = max(settlement.lease.start_date, accounting.period_start)
+                    tenant_period_end = min(settlement.lease.end_date if settlement.lease.end_date else accounting.period_end, accounting.period_end)
+                
                 settlement_data = {
                     "settlement_id": settlement.id,
                     "accounting_id": accounting.id,
@@ -673,7 +733,15 @@ def generate_accounting_documents(
                         "unit_number": settlement.unit.unit_number or "" if settlement.unit else "",
                         "size_sqm": float(settlement.unit.size_sqm) if settlement.unit and settlement.unit.size_sqm else 0,
                     },
-                    "items": settlement_items,
+                    "items": allocable_items,  # Nur umlagefähige Items
+                    "non_allocable_items": non_allocable_items,  # Nicht umlagefähige Items
+                    "allocation_key_label": allocation_key_label,
+                    "tenant_period_start": tenant_period_start.strftime("%d.%m.%Y") if tenant_period_start else None,
+                    "tenant_period_end": tenant_period_end.strftime("%d.%m.%Y") if tenant_period_end else None,
+                    "occupied_days": occupied_days,
+                    "period_days": period_days,
+                    "advance_payments_breakdown": advance_payments_breakdown,
+                    "is_vacancy": settlement.lease_id is None and settlement.tenant_id is None,
                     "client": accounting_data["client"],
                 }
                 
