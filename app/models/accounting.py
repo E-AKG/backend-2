@@ -127,6 +127,14 @@ class UnitSettlement(Base, TimestampMixin):
     is_sent = Column(Boolean, default=False, nullable=False)
     sent_at = Column(Date, nullable=True)
     
+    # Zeiträume für anteilige Berechnung (optional, für bessere Nachvollziehbarkeit)
+    period_start = Column(Date, nullable=True)  # Startdatum des Abrechnungszeitraums
+    period_end = Column(Date, nullable=True)  # Enddatum des Abrechnungszeitraums
+    lease_period_start = Column(Date, nullable=True)  # Startdatum des Vertrags im Abrechnungszeitraum
+    lease_period_end = Column(Date, nullable=True)  # Enddatum des Vertrags im Abrechnungszeitraum
+    days_in_period = Column(Integer, nullable=True)  # Anzahl Tage im Abrechnungszeitraum
+    days_occupied = Column(Integer, nullable=True)  # Anzahl bewohnter Tage im Abrechnungszeitraum
+    
     # Relationships
     accounting = relationship("Accounting", back_populates="unit_settlements")
     unit = relationship("Unit", foreign_keys=[unit_id])
