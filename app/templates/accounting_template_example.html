@@ -111,43 +111,106 @@
         <p><strong>Objekt:</strong> {{ property.name }}</p>
         <p><strong>Einheit:</strong> {{ unit.label }}</p>
         {% if unit.size_sqm %}<p><strong>Wohnfläche:</strong> {{ unit.size_sqm }} m²</p>{% endif %}
+        {% if allocation_key_label %}<p><strong>Umlageschlüssel:</strong> {{ allocation_key_label }}</p>{% endif %}
+        {% if tenant_period_start and tenant_period_end %}
+        <p><strong>Mietzeitraum im Abrechnungsjahr:</strong> {{ tenant_period_start }} – {{ tenant_period_end }} ({{ occupied_days }}/{{ period_days }} Tage)</p>
+        {% endif %}
+        <p><strong>Abrechnungszeitraum:</strong> {{ period_start }} – {{ period_end }}</p>
     </div>
     
     <h3>Kostenaufstellung</h3>
+    <p style="font-size: 10pt; color: #666; margin-bottom: 10px;">
+        Die folgende Kostenaufstellung zeigt die umlagefähigen Kosten des Objekts. Ihr Anteil wird entsprechend dem Umlageschlüssel und Ihrer Belegungszeit berechnet.
+    </p>
     <table>
         <thead>
             <tr>
                 <th>Kostenart</th>
                 <th>Beschreibung</th>
-                <th style="text-align: right;">Betrag</th>
+                <th style="text-align: right;">Gesamtkosten Objekt</th>
+                {% if allocation_key_label %}<th style="text-align: right;">Umlageschlüssel</th>{% endif %}
+                <th style="text-align: right;">Ihr Anteil</th>
             </tr>
         </thead>
         <tbody>
             {% for item in items %}
+            {% if item.is_allocable %}
             <tr>
                 <td>{{ item.cost_type }}</td>
                 <td>{{ item.description }}</td>
                 <td style="text-align: right;">{{ format_currency(item.amount) }}</td>
+                {% if allocation_key_label %}<td style="text-align: right; font-size: 9pt; color: #666;">{{ allocation_key_label }}</td>{% endif %}
+                <td style="text-align: right; font-weight: bold;">
+                    {% if item.tenant_share %}
+                        {{ format_currency(item.tenant_share) }}
+                    {% else %}
+                        <span style="color: #999; font-size: 9pt;">wird anteilig berechnet</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+            {% if non_allocable_items %}
+            <tr style="background-color: #f8f9fa;">
+                <td colspan="{% if allocation_key_label %}5{% else %}4{% endif %}" style="font-weight: bold; padding-top: 15px; border-top: 2px solid #ddd;">
+                    Nicht umlagefähige Kosten (trägt Eigentümer)
+                </td>
+            </tr>
+            {% for item in non_allocable_items %}
+            <tr style="background-color: #f8f9fa;">
+                <td>{{ item.cost_type }}</td>
+                <td>{{ item.description }}</td>
+                <td style="text-align: right;">{{ format_currency(item.amount) }}</td>
+                {% if allocation_key_label %}<td style="text-align: right; color: #999;">—</td>{% endif %}
+                <td style="text-align: right; color: #999;">—</td>
             </tr>
             {% endfor %}
+            {% endif %}
+            <tr class="total-row">
+                <td colspan="{% if allocation_key_label %}4{% else %}3{% endif %}" style="font-weight: bold;">Umlagefähige Gesamtkosten</td>
+                <td style="text-align: right; font-weight: bold;">{{ allocated_costs_formatted }}</td>
+            </tr>
         </tbody>
     </table>
     
     <h3>Abrechnung</h3>
     <table>
         <tr>
-            <td>Anteilige Kosten:</td>
+            <td>Anteilige Kosten (basierend auf Umlageschlüssel und Belegungszeit):</td>
             <td style="text-align: right; font-weight: bold;">{{ allocated_costs_formatted }}</td>
         </tr>
         <tr>
-            <td>Geleistete Vorauszahlungen:</td>
-            <td style="text-align: right;">{{ advance_payments_formatted }}</td>
+            <td>
+                Geleistete Vorauszahlungen:
+                <div style="font-size: 9pt; color: #666; font-weight: normal; margin-top: 3px;">
+                    Vorauszahlungen umfassen Nebenkosten- und Heizkosten-Vorauszahlungen (ohne Kaltmiete).
+                </div>
+                {% if advance_payments_breakdown %}
+                <div style="font-size: 9pt; color: #666; margin-top: 5px;">
+                    {% if advance_payments_breakdown.operating_costs %}
+                    Nebenkosten-VZ: {{ format_currency(advance_payments_breakdown.operating_costs) }}<br>
+                    {% endif %}
+                    {% if advance_payments_breakdown.heating_costs %}
+                    Heizkosten-VZ: {{ format_currency(advance_payments_breakdown.heating_costs) }}<br>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </td>
+            <td style="text-align: right; vertical-align: top;">{{ advance_payments_formatted }}</td>
         </tr>
         <tr class="total-row">
             <td>{% if is_credit %}Guthaben{% else %}Nachzahlung{% endif %}:</td>
             <td style="text-align: right;">{{ settlement_amount_formatted }}</td>
         </tr>
     </table>
+    
+    {% if is_vacancy %}
+    <div style="background-color: #fff3cd; padding: 12px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #ffc107;">
+        <p style="margin: 0; font-size: 10pt; color: #856404;">
+            <strong>Hinweis:</strong> Kostenanteile für Leerstand werden dem Eigentümer zugeordnet und nicht auf Mieter umgelegt.
+        </p>
+    </div>
+    {% endif %}
     
     <div class="settlement-amount {% if is_credit %}negative{% else %}positive{% endif %}">
         {% if is_credit %}
