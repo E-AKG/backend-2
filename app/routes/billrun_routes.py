@@ -4,6 +4,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from typing import Optional
 from datetime import date
 from decimal import Decimal
+from calendar import monthrange
 from ..db import get_db
 from ..models.user import User
 from ..models.billrun import BillRun, Charge, BillRunStatus, ChargeStatus
@@ -192,21 +193,55 @@ def generate_bill_run(
         
         total_amount = Decimal(0)
         
-        # Erstelle Charges für jeden Vertrag
+        # Erstelle Charges für jeden Vertrag mit anteiliger Berechnung
+        # Berechne Start und Ende des Abrechnungsmonats
+        period_start = date(request.period_year, request.period_month, 1)
+        _, last_day = monthrange(request.period_year, request.period_month)
+        period_end = date(request.period_year, request.period_month, last_day)
+        total_days_in_month = (period_end - period_start).days + 1
+        
         for lease in active_leases:
             logger.info(f"🔍 Processing lease {lease.id}: {len(lease.components)} components")
             
             # Berechne Gesamtmiete aus Komponenten
-            lease_amount = sum(
+            monthly_lease_amount = sum(
                 Decimal(str(component.amount))
                 for component in lease.components
             )
             
-            logger.info(f"🔍 Lease {lease.id} total amount: {lease_amount}")
+            logger.info(f"🔍 Lease {lease.id} monthly amount: {monthly_lease_amount}")
             
-            if lease_amount <= 0:
+            if monthly_lease_amount <= 0:
                 logger.warning(f"⚠️ Lease {lease.id} has no components or 0 amount, skipping")
                 continue  # Überspringe Verträge ohne Komponenten
+            
+            # Berechne anteilige Miete basierend auf genauen Tagen
+            # Prüfe ob Vertrag im Abrechnungsmonat aktiv war
+            lease_start = max(lease.start_date, period_start)
+            lease_end = min(lease.end_date if lease.end_date else period_end, period_end)
+            
+            if lease_start <= lease_end:
+                # Berechne tatsächliche Tage im Abrechnungsmonat
+                actual_days = (lease_end - lease_start).days + 1  # +1 weil beide Tage inklusive sind
+                
+                # Anteiliger Faktor basierend auf Tagen
+                if total_days_in_month > 0:
+                    time_factor = Decimal(actual_days) / Decimal(total_days_in_month)
+                else:
+                    time_factor = Decimal(0)
+                
+                # Berechne anteilige Miete
+                lease_amount = monthly_lease_amount * time_factor
+                
+                # Erstelle Beschreibung mit Zeitraum-Info wenn anteilig
+                if actual_days < total_days_in_month:
+                    description = f"Miete {request.period_month:02d}/{request.period_year} (anteilig: {actual_days}/{total_days_in_month} Tage)"
+                else:
+                    description = f"Miete {request.period_month:02d}/{request.period_year}"
+            else:
+                # Vertrag war nicht im Abrechnungsmonat aktiv
+                logger.warning(f"⚠️ Lease {lease.id} was not active in period {request.period_month}/{request.period_year}, skipping")
+                continue
             
             # Fälligkeitsdatum: due_day im angegebenen Monat
             try:
@@ -225,10 +260,12 @@ def generate_bill_run(
                 amount=lease_amount,
                 due_date=due_date,
                 status=ChargeStatus.OPEN,
-                description=f"Miete {request.period_month:02d}/{request.period_year}"
+                description=description
             )
             db.add(charge)
             total_amount += lease_amount
+            
+            logger.info(f"💰 Lease {lease.id}: {lease_amount} € ({actual_days}/{total_days_in_month} Tage)")
         
         # Aktualisiere total_amount
         bill_run.total_amount = total_amount
