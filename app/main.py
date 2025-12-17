@@ -288,6 +288,29 @@ try:
 except Exception as e:
     logger.warning(f"⚠️ Portal-Migration-Fehler (kann ignoriert werden): {str(e)}")
 
+# Migration: Erweitere unit_settlements um Zeitraum-Felder für anteilige Berechnung
+try:
+    from sqlalchemy import text, inspect
+    inspector = inspect(engine)
+    
+    if 'unit_settlements' in inspector.get_table_names():
+        columns = [col['name'] for col in inspector.get_columns('unit_settlements')]
+        
+        if 'period_start' not in columns:
+            logger.info("🔄 Füge Zeitraum-Felder zu unit_settlements Tabelle hinzu...")
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE unit_settlements ADD COLUMN IF NOT EXISTS period_start DATE"))
+                conn.execute(text("ALTER TABLE unit_settlements ADD COLUMN IF NOT EXISTS period_end DATE"))
+                conn.execute(text("ALTER TABLE unit_settlements ADD COLUMN IF NOT EXISTS lease_period_start DATE"))
+                conn.execute(text("ALTER TABLE unit_settlements ADD COLUMN IF NOT EXISTS lease_period_end DATE"))
+                conn.execute(text("ALTER TABLE unit_settlements ADD COLUMN IF NOT EXISTS days_in_period INTEGER"))
+                conn.execute(text("ALTER TABLE unit_settlements ADD COLUMN IF NOT EXISTS days_occupied INTEGER"))
+            logger.info("✅ Migration erfolgreich: Zeitraum-Felder zu unit_settlements hinzugefügt")
+        else:
+            logger.debug("✅ Zeitraum-Felder existieren bereits in unit_settlements")
+except Exception as e:
+    logger.warning(f"⚠️ unit_settlements Zeitraum-Migration-Fehler (kann ignoriert werden): {str(e)}")
+
 # Migration: Erweitere DocumentType Enum um BK_STATEMENT und BK_RECEIPT
 # WICHTIG: PostgreSQL erlaubt ALTER TYPE nur außerhalb von Transaktionen
 # Daher verwenden wir einen DO-Block (wird automatisch außerhalb von Transaktionen ausgeführt)
