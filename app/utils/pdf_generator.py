@@ -541,6 +541,14 @@ def prepare_settlement_data(settlement_data: Dict) -> Dict:
         },
         
         "items": settlement_data.get("items", []),
+        "non_allocable_items": settlement_data.get("non_allocable_items", []),
+        "allocation_key_label": settlement_data.get("allocation_key_label", "nach Fläche (m²)"),
+        "tenant_period_start": settlement_data.get("tenant_period_start"),
+        "tenant_period_end": settlement_data.get("tenant_period_end"),
+        "occupied_days": settlement_data.get("occupied_days", 0),
+        "period_days": settlement_data.get("period_days", 365),
+        "advance_payments_breakdown": settlement_data.get("advance_payments_breakdown", {}),
+        "is_vacancy": settlement_data.get("is_vacancy", False),
         
         "client": {
             "name": settlement_data.get("client", {}).get("name", ""),
