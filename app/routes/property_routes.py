@@ -97,15 +97,53 @@ def create_property(
                 # Falls client_id Spalte noch nicht existiert, ignorieren
                 logger.warning(f"client_id kann nicht gesetzt werden (Spalte existiert noch nicht): {str(e)}")
         
+        # Entferne units_count aus property_dict (ist kein Property-Feld)
+        units_count = property_dict.pop("units_count", None)
+        
         new_property = Property(
             owner_id=current_user.id,
             **property_dict
         )
         db.add(new_property)
+        db.flush()  # Flush um ID zu bekommen, aber noch nicht committen
+        
+        # Erstelle automatisch Einheiten, falls units_count angegeben wurde
+        if units_count and units_count > 0:
+            from ..models.unit import UnitStatus
+            created_units = []
+            
+            # Berechne durchschnittliche m² pro Einheit (falls Gesamtfläche angegeben)
+            avg_sqm_per_unit = None
+            if new_property.size_sqm and new_property.size_sqm > 0:
+                avg_sqm_per_unit = int(new_property.size_sqm / units_count)
+            
+            for i in range(1, units_count + 1):
+                unit_label = f"Wohnung {i}"
+                unit = Unit(
+                    owner_id=current_user.id,
+                    property_id=new_property.id,
+                    unit_label=unit_label,
+                    size_sqm=avg_sqm_per_unit,  # Optional: gleichmäßig aufteilen
+                    status=UnitStatus.VACANT,
+                    unit_number=str(i).zfill(3) if i < 1000 else str(i),  # "001", "002", etc.
+                )
+                
+                # Setze client_id falls vorhanden
+                if client_id:
+                    try:
+                        unit.client_id = client_id
+                    except Exception:
+                        pass  # Falls Spalte noch nicht existiert
+                
+                db.add(unit)
+                created_units.append(unit)
+            
+            logger.info(f"Created {len(created_units)} units automatically for property {new_property.id}")
+        
         db.commit()
         db.refresh(new_property)
         
-        logger.info(f"Property created: {new_property.id} by user {current_user.id}, client_id: {client_id}")
+        logger.info(f"Property created: {new_property.id} by user {current_user.id}, client_id: {client_id}, units_count: {units_count}")
         return PropertyOut.model_validate(new_property)
     except SQLAlchemyError as e:
         db.rollback()
