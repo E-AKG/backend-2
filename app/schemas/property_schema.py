@@ -8,6 +8,7 @@ class PropertyCreate(BaseModel):
     address: str = Field(..., min_length=1, max_length=500, description="Property address")
     year_built: Optional[int] = Field(None, ge=1800, le=2100, description="Year built")
     size_sqm: Optional[int] = Field(None, gt=0, description="Size in square meters")
+    units_count: Optional[int] = Field(None, ge=0, le=1000, description="Anzahl der Einheiten (für automatische Erstellung)")
     features: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional features as JSON")
     notes: Optional[str] = Field(None, description="Additional notes")
     
