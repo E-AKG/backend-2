@@ -6,7 +6,7 @@ from decimal import Decimal
 from datetime import date
 from ..db import get_db
 from ..models.user import User
-from ..models.lease import Lease, LeaseComponent, LeaseStatus, RentAdjustment
+from ..models.lease import Lease, LeaseComponent, LeaseStatus, RentAdjustment, RentAdjustmentType
 from ..models.unit import Unit
 from ..models.tenant import Tenant
 from ..models.property import Property
@@ -493,9 +493,11 @@ def adjust_rent(
     old_amount = component.amount
     
     # Erstelle Adjustment-Eintrag
-    # TODO: Uncomment after database migration adds adjustment_type column
-    # adjustment_reason_text = reason or f"{component.adjustment_type.value} Anpassung" if hasattr(component, 'adjustment_type') and component.adjustment_type else "Anpassung"
-    adjustment_reason_text = reason or "Anpassung"
+    adjustment_reason_text = reason or (
+        f"{component.adjustment_type.value} Anpassung"
+        if getattr(component, 'adjustment_type', None) and component.adjustment_type != RentAdjustmentType.FIXED
+        else "Anpassung"
+    )
     
     adjustment = RentAdjustment(
         component_id=component_id,
@@ -536,34 +538,20 @@ def get_upcoming_adjustments(
     
     upcoming = []
     today = date_class.today()
-    
-    # TODO: Uncomment after database migration adds adjustment_type, staggered_schedule, index_adjustment_date columns
-    # Temporarily disabled - columns don't exist yet
-    # for component in lease.components:
-    #     if hasattr(component, 'adjustment_type') and component.adjustment_type == "staggered" and hasattr(component, 'staggered_schedule') and component.staggered_schedule:
-    #         # Prüfe Staffelmiete
-    #         for schedule_item in component.staggered_schedule:
-    #             schedule_date = date_class.fromisoformat(schedule_item.get("date"))
-    #             if schedule_date > today:
-    #                 upcoming.append({
-    #                     "component_id": component.id,
-    #                     "component_type": component.type.value,
-    #                     "adjustment_date": schedule_date.isoformat(),
-    #                     "new_amount": float(schedule_item.get("amount", 0)),
-    #                     "current_amount": float(component.amount),
-    #                     "type": "staggered"
-    #                 })
-    #     elif hasattr(component, 'adjustment_type') and component.adjustment_type == "index_linked" and hasattr(component, 'index_adjustment_date') and component.index_adjustment_date:
-    #         # Prüfe Indexmiete
-    #         if component.index_adjustment_date > today:
-    #             upcoming.append({
-    #                 "component_id": component.id,
-    #                 "component_type": component.type.value,
-    #                 "adjustment_date": component.index_adjustment_date.isoformat(),
-    #                 "current_amount": float(component.amount),
-    #                 "index_type": component.index_type,
-    #                 "type": "index_linked"
-    #             })
+
+    for component in lease.components:
+        if getattr(component, 'adjustment_type', None) == "staggered" and getattr(component, 'staggered_schedule', None):
+            for schedule_item in component.staggered_schedule:
+                schedule_date = date_class.fromisoformat(schedule_item.get("date"))
+                if schedule_date > today:
+                    upcoming.append({
+                        "component_id": component.id,
+                        "component_type": component.type.value,
+                        "adjustment_date": schedule_date.isoformat(),
+                        "new_amount": float(schedule_item.get("amount", 0)),
+                        "current_amount": float(component.amount),
+                        "type": "staggered"
+                    })
     
     return {
         "lease_id": lease_id,
