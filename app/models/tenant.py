@@ -51,8 +51,26 @@ class Tenant(Base, TimestampMixin):
     owner = relationship("User", foreign_keys=[owner_id])
     client = relationship("Client", foreign_keys=[client_id])
     leases = relationship("Lease", back_populates="tenant", cascade="all, delete-orphan")
+    comments = relationship("TenantComment", back_populates="tenant", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index('ix_tenants_owner_lastname', 'owner_id', 'last_name'),
     )
+
+
+class TenantComment(Base, TimestampMixin):
+    """
+    Gesprächsnotiz zu einem Mieter
+    """
+    __tablename__ = "tenant_comments"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    tenant_id = Column(String, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    comment = Column(Text, nullable=False)
+
+    # Relationships
+    tenant = relationship("Tenant", back_populates="comments")
+    user = relationship("User", foreign_keys=[user_id])
 
