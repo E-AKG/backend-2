@@ -19,8 +19,9 @@ class Tenant(Base, TimestampMixin):
     id = Column(String, primary_key=True, default=generate_uuid)
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     client_id = Column(String, ForeignKey("clients.id", ondelete="CASCADE"), nullable=True, index=True)
-    first_name = Column(String(100), nullable=False)
-    last_name = Column(String(100), nullable=False)
+    first_name = Column(String(100), nullable=True)   # Bei Gewerbe optional
+    last_name = Column(String(100), nullable=True)    # Bei Gewerbe optional
+    company_name = Column(String(255), nullable=True)  # Firma/Gewerbe
     email = Column(String(255), nullable=True)  # E-Mail für Mieterportal-Zugang
     phone = Column(String(50), nullable=True)  # Telefon
     address = Column(String(500), nullable=True)
