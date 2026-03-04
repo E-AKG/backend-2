@@ -744,3 +744,242 @@ def get_default_settlement_template() -> str:
 </html>
 """
 
+
+# ========== Liegenschafts-PDF ==========
+
+HEATING_TYPE_LABELS = {
+    "gas": "Gas",
+    "oil": "Öl",
+    "electric": "Strom",
+    "heat_pump": "Wärmepumpe",
+    "district_heating": "Fernwärme",
+    "pellets": "Pellets",
+    "other": "Sonstige",
+}
+
+
+def generate_property_pdf(
+    property_data: Dict,
+    units: list,
+    output_filename: Optional[str] = None
+) -> str:
+    """
+    Generiere PDF für Liegenschaft mit allen Eckdaten.
+    
+    Args:
+        property_data: Dict mit Property-Daten
+        units: Liste der Einheiten
+        output_filename: Name der Output-Datei (optional)
+    
+    Returns:
+        Pfad zur generierten PDF-Datei
+    """
+    if not PDF_AVAILABLE:
+        raise RuntimeError(
+            "PDF-Generierung nicht verfügbar. Bitte installieren Sie: pip install jinja2 weasyprint"
+        )
+
+    template_vars = _prepare_property_data(property_data, units)
+    template_content = _get_property_template()
+    template = Template(template_content)
+    html_content = template.render(**template_vars)
+
+    if not output_filename:
+        safe_name = "".join(c if c.isalnum() or c in " -_" else "_" for c in property_data.get("name", "property")[:50])
+        output_filename = f"liegenschaft_{safe_name}.pdf"
+
+    output_path = PDF_OUTPUT_DIR / output_filename
+    try:
+        try:
+            HTML(string=html_content).write_pdf(output_path)
+        except AttributeError as attr_error:
+            if "'super' object has no attribute 'transform'" in str(attr_error):
+                logger.warning("⚠️ WeasyPrint Kompatibilitätsproblem. Versuche mit optimierten Optionen...")
+                HTML(string=html_content).write_pdf(
+                    output_path,
+                    optimize_images=False,
+                    presentational_hints=True
+                )
+            else:
+                raise
+        logger.info(f"✅ Liegenschafts-PDF generiert: {output_path}")
+        return str(output_path)
+    except Exception as e:
+        logger.error(f"❌ Fehler beim Generieren der Liegenschafts-PDF: {str(e)}")
+        raise
+
+
+def _prepare_property_data(property_data: Dict, units: list) -> Dict:
+    """Bereite Liegenschaftsdaten für Template vor."""
+    from datetime import date as date_class
+
+    addr = property_data.get("address") or ""
+    if not addr and (property_data.get("address_street") or property_data.get("postal_code") or property_data.get("city")):
+        parts = [property_data.get("address_street", ""), 
+                 " ".join(filter(None, [property_data.get("postal_code", ""), property_data.get("city", "")]))]
+        addr = ", ".join(filter(None, parts))
+
+    units_count = len(units)
+    occupied_count = sum(1 for u in units if u.get("status") == "occupied")
+
+    heating = property_data.get("heating_type") or ""
+    heating_label = HEATING_TYPE_LABELS.get(heating, heating or "—")
+
+    energy_valid = property_data.get("energy_certificate_valid_until")
+    if hasattr(energy_valid, "strftime"):
+        energy_valid_str = energy_valid.strftime("%d.%m.%Y")
+    elif isinstance(energy_valid, str) and energy_valid:
+        try:
+            from datetime import datetime
+            d = datetime.fromisoformat(energy_valid.replace("Z", "+00:00"))
+            energy_valid_str = d.strftime("%d.%m.%Y")
+        except Exception:
+            energy_valid_str = energy_valid
+    else:
+        energy_valid_str = "—"
+
+    units_rows = []
+    for u in units:
+        status_label = "Vermietet" if u.get("status") == "occupied" else "Leer"
+        sqm = u.get("size_sqm") or u.get("living_area_sqm")
+        units_rows.append({
+            "unit_number": u.get("unit_number") or "—",
+            "unit_label": u.get("unit_label", "—"),
+            "floor": u.get("floor") if u.get("floor") is not None else "—",
+            "size_sqm": f"{sqm} m²" if sqm is not None else "—",
+            "status": status_label,
+        })
+
+    return {
+        "name": property_data.get("name", "—"),
+        "address": addr or "—",
+        "year_built": property_data.get("year_built") or "—",
+        "size_sqm": f"{property_data.get('size_sqm')} m²" if property_data.get("size_sqm") else "—",
+        "units_count": units_count,
+        "occupied_count": occupied_count,
+        "unit_value_file_number": property_data.get("unit_value_file_number") or "—",
+        "cadastral_district": property_data.get("cadastral_district") or "—",
+        "cadastral_parcel": property_data.get("cadastral_parcel") or "—",
+        "heating_type": heating_label,
+        "energy_certificate_valid_until": energy_valid_str,
+        "energy_rating_class": property_data.get("energy_rating_class") or "—",
+        "energy_rating_value": property_data.get("energy_rating_value") or "—",
+        "total_residential_area": f"{property_data.get('total_residential_area')} m²" if property_data.get("total_residential_area") else "—",
+        "total_commercial_area": f"{property_data.get('total_commercial_area')} m²" if property_data.get("total_commercial_area") else "—",
+        "notes": property_data.get("notes") or "",
+        "units": units_rows,
+        "date": date_class,
+        "format_date": format_date,
+    }
+
+
+def _get_property_template() -> str:
+    """Modernes Template für Liegenschafts-PDF."""
+    return """
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Liegenschaftsübersicht - {{ name }}</title>
+    <style>
+        @page { size: A4; margin: 2cm; }
+        body { font-family: Helvetica, Arial, sans-serif; margin: 0; font-size: 10pt; color: #1e293b; line-height: 1.5; }
+        .header-bar { background: #0f172a; color: white; padding: 20px 24px; margin-bottom: 24px; }
+        .header-bar h1 { margin: 0 0 6px 0; font-size: 20pt; font-weight: bold; }
+        .header-bar .address { font-size: 11pt; }
+        .section { margin-bottom: 24px; }
+        .section-title { font-size: 12pt; font-weight: bold; color: #0f172a; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 2px solid #3b82f6; }
+        .kpi-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+        .kpi-table td { padding: 14px 16px; background: #f8fafc; border: 1px solid #e2e8f0; width: 25%; }
+        .kpi-label { font-size: 9pt; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+        .kpi-value { font-size: 14pt; font-weight: bold; color: #0f172a; }
+        .data-table { width: 100%; border-collapse: collapse; }
+        .data-table td { padding: 8px 12px; border: 1px solid #e2e8f0; }
+        .data-table .label { background: #f8fafc; font-weight: bold; width: 40%; }
+        .units-table { width: 100%; border-collapse: collapse; font-size: 9pt; margin-top: 8px; }
+        .units-table th { background: #0f172a; color: white; padding: 10px 12px; text-align: left; }
+        .units-table td { padding: 10px 12px; border: 1px solid #e2e8f0; }
+        .units-table tr:nth-child(even) td { background: #f8fafc; }
+        .status-occupied { color: #059669; font-weight: bold; }
+        .status-vacant { color: #64748b; }
+        .notes-box { background: #fffbeb; border: 1px solid #fcd34d; padding: 12px 16px; margin-top: 16px; }
+        .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 9pt; color: #64748b; }
+    </style>
+</head>
+<body>
+    <div class="header-bar">
+        <h1>{{ name }}</h1>
+        <p class="address">{{ address }}</p>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Eckdaten</div>
+        <table class="kpi-table">
+            <tr>
+                <td><div class="kpi-label">Baujahr</div><div class="kpi-value">{{ year_built }}</div></td>
+                <td><div class="kpi-label">Fläche</div><div class="kpi-value">{{ size_sqm }}</div></td>
+                <td><div class="kpi-label">Einheiten</div><div class="kpi-value">{{ units_count }}</div></td>
+                <td><div class="kpi-label">Vermietet</div><div class="kpi-value">{{ occupied_count }}</div></td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Erweiterte Stammdaten</div>
+        <table class="data-table">
+            <tr><td class="label">Einheitswert-Aktenzeichen</td><td>{{ unit_value_file_number }}</td></tr>
+            <tr><td class="label">Flur</td><td>{{ cadastral_district }}</td></tr>
+            <tr><td class="label">Flurstück</td><td>{{ cadastral_parcel }}</td></tr>
+        </table>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Technische Daten</div>
+        <table class="data-table">
+            <tr><td class="label">Heizungsart</td><td>{{ heating_type }}</td></tr>
+            <tr><td class="label">Energieausweis gültig bis</td><td>{{ energy_certificate_valid_until }}</td></tr>
+            <tr><td class="label">Energieklasse</td><td>{{ energy_rating_class }}</td></tr>
+            <tr><td class="label">Wohnfläche gesamt</td><td>{{ total_residential_area }}</td></tr>
+            <tr><td class="label">Gewerbefläche gesamt</td><td>{{ total_commercial_area }}</td></tr>
+        </table>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Einheiten</div>
+        <table class="units-table">
+            <thead>
+                <tr>
+                    <th>Nr.</th>
+                    <th>Bezeichnung</th>
+                    <th>Etage</th>
+                    <th>Fläche</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in units %}
+                <tr>
+                    <td>{{ u.unit_number }}</td>
+                    <td>{{ u.unit_label }}</td>
+                    <td>{{ u.floor }}</td>
+                    <td>{{ u.size_sqm }}</td>
+                    <td class="{% if u.status == 'Vermietet' %}status-occupied{% else %}status-vacant{% endif %}">{{ u.status }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if notes %}
+    <div class="notes-box">
+        <strong>Notizen:</strong> {{ notes }}
+    </div>
+    {% endif %}
+
+    <div class="footer">
+        Erstellt am {{ format_date(date.today()) }} &middot; Immpire Pro &ndash; Liegenschaftsübersicht
+    </div>
+</body>
+</html>
+"""
+
