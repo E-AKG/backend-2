@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from typing import Optional
 from ..db import get_db
 from ..models.user import User
-from ..models.tenant import Tenant
+from ..models.tenant import Tenant, TenantComment
 from ..models.lease import Lease
 from ..schemas.tenant_schema import TenantCreate, TenantUpdate, TenantOut
 from ..utils.deps import get_current_user
@@ -363,6 +364,91 @@ def delete_tenant(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete tenant"
         )
+
+
+class TenantCommentCreate(BaseModel):
+    comment: str
+
+
+@router.post("/{tenant_id}/comments", status_code=status.HTTP_201_CREATED)
+def add_tenant_comment(
+    tenant_id: str,
+    data: TenantCommentCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Gesprächsnotiz zu Mieter hinzufügen"""
+    tenant = db.query(Tenant).filter(
+        Tenant.id == tenant_id,
+        Tenant.owner_id == current_user.id
+    ).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Mieter nicht gefunden")
+    comment = TenantComment(
+        tenant_id=tenant_id,
+        user_id=current_user.id,
+        comment=data.comment
+    )
+    db.add(comment)
+    db.commit()
+    db.refresh(comment)
+    return {
+        "id": comment.id,
+        "comment": comment.comment,
+        "user_id": comment.user_id,
+        "created_at": comment.created_at.isoformat()
+    }
+
+
+@router.get("/{tenant_id}/comments")
+def get_tenant_comments(
+    tenant_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Gesprächsnotizen eines Mieters abrufen"""
+    tenant = db.query(Tenant).filter(
+        Tenant.id == tenant_id,
+        Tenant.owner_id == current_user.id
+    ).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Mieter nicht gefunden")
+    comments = db.query(TenantComment).filter(
+        TenantComment.tenant_id == tenant_id
+    ).order_by(TenantComment.created_at.asc()).all()
+    return [
+        {
+            "id": c.id,
+            "comment": c.comment,
+            "user_id": c.user_id,
+            "created_at": c.created_at.isoformat()
+        }
+        for c in comments
+    ]
+
+
+@router.delete("/{tenant_id}/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_tenant_comment(
+    tenant_id: str,
+    comment_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Gesprächsnotiz löschen"""
+    tenant = db.query(Tenant).filter(
+        Tenant.id == tenant_id,
+        Tenant.owner_id == current_user.id
+    ).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Mieter nicht gefunden")
+    comment = db.query(TenantComment).filter(
+        TenantComment.id == comment_id,
+        TenantComment.tenant_id == tenant_id
+    ).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Notiz nicht gefunden")
+    db.delete(comment)
+    db.commit()
 
 
 @router.post("/{tenant_id}/recalculate-risk-score", response_model=TenantOut)
