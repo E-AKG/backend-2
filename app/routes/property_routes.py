@@ -112,18 +112,14 @@ def create_property(
             from ..models.unit import UnitStatus
             created_units = []
             
-            # Berechne durchschnittliche m² pro Einheit (falls Gesamtfläche angegeben)
-            avg_sqm_per_unit = None
-            if new_property.size_sqm and new_property.size_sqm > 0:
-                avg_sqm_per_unit = int(new_property.size_sqm / units_count)
-            
+            # size_sqm bleibt leer, damit erkennbar ist, welche Einheiten noch bearbeitet werden müssen
             for i in range(1, units_count + 1):
                 unit_label = f"Wohnung {i}"
                 unit = Unit(
                     owner_id=current_user.id,
                     property_id=new_property.id,
                     unit_label=unit_label,
-                    size_sqm=avg_sqm_per_unit,  # Optional: gleichmäßig aufteilen
+                    size_sqm=None,
                     status=UnitStatus.VACANT,
                     unit_number=str(i).zfill(3) if i < 1000 else str(i),  # "001", "002", etc.
                 )
