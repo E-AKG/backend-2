@@ -24,7 +24,10 @@ class Tenant(Base, TimestampMixin):
     company_name = Column(String(255), nullable=True)  # Firma/Gewerbe
     email = Column(String(255), nullable=True)  # E-Mail für Mieterportal-Zugang
     phone = Column(String(50), nullable=True)  # Telefon
-    address = Column(String(500), nullable=True)
+    address = Column(String(500), nullable=True)  # Kombiniert für Backward-Kompat
+    address_street = Column(String(255), nullable=True)  # Straße
+    postal_code = Column(String(20), nullable=True)     # PLZ
+    city = Column(String(100), nullable=True)           # Ort
     notes = Column(Text, nullable=True)
     
     # Alle Vertragspartner (z.B. Eheleute)

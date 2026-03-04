@@ -22,7 +22,10 @@ class Property(Base, TimestampMixin):
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     client_id = Column(String, ForeignKey("clients.id", ondelete="CASCADE"), nullable=True, index=True)
     name = Column(String(255), nullable=False)
-    address = Column(String(500), nullable=False)
+    address = Column(String(500), nullable=False)  # Kombiniert
+    address_street = Column(String(255), nullable=True)
+    postal_code = Column(String(20), nullable=True)
+    city = Column(String(100), nullable=True)
     year_built = Column(Integer, nullable=True)
     size_sqm = Column(Integer, nullable=True)
     features = Column(JSONB, default=dict)

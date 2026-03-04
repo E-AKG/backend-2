@@ -27,6 +27,9 @@ class Owner(Base, TimestampMixin):
     email = Column(String(255), nullable=True)
     phone = Column(String(50), nullable=True)
     address = Column(String(500), nullable=True)
+    address_street = Column(String(255), nullable=True)
+    postal_code = Column(String(20), nullable=True)
+    city = Column(String(100), nullable=True)
     
     # Steuerliche Daten
     tax_id = Column(String(50), nullable=True)  # Steuer-ID (für Bescheinigungen)

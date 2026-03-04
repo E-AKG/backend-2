@@ -38,7 +38,10 @@ class ServiceProvider(Base, TimestampMixin):
     email = Column(String(255), nullable=True)
     phone = Column(String(50), nullable=True)
     mobile = Column(String(50), nullable=True)
-    address = Column(String(500), nullable=True)
+    address = Column(String(500), nullable=True)  # Kombiniert für Backward-Kompat
+    address_street = Column(String(255), nullable=True)
+    postal_code = Column(String(20), nullable=True)
+    city = Column(String(100), nullable=True)
     
     # Geschäftsdaten
     tax_id = Column(String(50), nullable=True)  # Steuernummer/USt-IdNr
