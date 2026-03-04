@@ -61,13 +61,11 @@ class LeaseComponent(Base, TimestampMixin):
     amount = Column(DECIMAL(10, 2), nullable=False)
     description = Column(String(255), nullable=True)
     
+    # Mietanpassung
+    adjustment_type = Column(Enum(RentAdjustmentType), default=RentAdjustmentType.FIXED, nullable=False)
+    staggered_schedule = Column(JSONB, nullable=True)  # [{"date": "2024-01-01", "amount": 500.00}, ...]
+    
     # TODO: Uncomment after database migration adds these columns
-    # # Mietanpassung
-    # adjustment_type = Column(Enum(RentAdjustmentType), default=RentAdjustmentType.FIXED, nullable=False)
-    # 
-    # # Staffelmiete: Liste von {date, amount}
-    # staggered_schedule = Column(JSONB, nullable=True)  # [{"date": "2024-01-01", "amount": 500.00}, ...]
-    # 
     # # Indexmiete
     # index_type = Column(String(50), nullable=True)  # z.B. "VPI", "Mietspiegel"
     # index_base_value = Column(DECIMAL(10, 2), nullable=True)  # Basiswert des Index
