@@ -80,6 +80,9 @@ def create_property(
     """
     try:
         property_dict = property_data.model_dump()
+        from ..utils.address_utils import build_address
+        addr = build_address(property_dict)
+        property_dict["address"] = addr if addr else (property_dict.get("address") or "")
         
         # Setze client_id falls angegeben (und Spalte existiert)
         if client_id:
@@ -195,10 +198,13 @@ def update_property(
         )
     
     try:
-        # Update only provided fields
         update_data = property_data.model_dump(exclude_unset=True)
+        from ..utils.address_utils import build_address
+        merged = {**{k: getattr(property_obj, k) for k in ("address", "address_street", "postal_code", "city") if hasattr(property_obj, k)}, **update_data}
+        update_data["address"] = build_address(merged) or getattr(property_obj, "address", "")
         for field, value in update_data.items():
-            setattr(property_obj, field, value)
+            if hasattr(property_obj, field):
+                setattr(property_obj, field, value)
         
         db.commit()
         db.refresh(property_obj)

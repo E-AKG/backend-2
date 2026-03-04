@@ -21,6 +21,9 @@ class ClientCreate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
+    address_street: Optional[str] = None
+    postal_code: Optional[str] = None
+    city: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -31,6 +34,9 @@ class ClientUpdate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
+    address_street: Optional[str] = None
+    postal_code: Optional[str] = None
+    city: Optional[str] = None
     notes: Optional[str] = None
     is_active: Optional[bool] = None
 
@@ -45,6 +51,9 @@ class ClientResponse(BaseModel):
     email: Optional[str]
     phone: Optional[str]
     address: Optional[str]
+    address_street: Optional[str] = None
+    postal_code: Optional[str] = None
+    city: Optional[str] = None
     notes: Optional[str]
     is_active: bool
     created_at: datetime
@@ -124,9 +133,12 @@ def create_client(
     db: Session = Depends(get_db)
 ):
     """Neuen Mandanten erstellen"""
+    from ..utils.address_utils import build_address
+    data = client_data.model_dump() if hasattr(client_data, 'model_dump') else client_data.dict()
+    data["address"] = build_address(data)
     client = Client(
         owner_id=current_user.id,
-        **client_data.dict()
+        **data
     )
     
     db.add(client)
@@ -164,9 +176,12 @@ def update_client(
     if not client:
         raise HTTPException(status_code=404, detail="Mandant nicht gefunden")
     
-    update_data = client_data.dict(exclude_unset=True)
+    from ..utils.address_utils import build_address
+    update_data = client_data.model_dump(exclude_unset=True) if hasattr(client_data, 'model_dump') else client_data.dict(exclude_unset=True)
+    update_data["address"] = build_address({**{"address": client.address, "address_street": getattr(client, "address_street", None), "postal_code": getattr(client, "postal_code", None), "city": getattr(client, "city", None)}, **update_data})
     for key, value in update_data.items():
-        setattr(client, key, value)
+        if hasattr(client, key):
+            setattr(client, key, value)
     
     db.commit()
     db.refresh(client)

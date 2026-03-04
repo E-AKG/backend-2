@@ -82,6 +82,8 @@ def create_tenant(
     """
     try:
         tenant_dict = tenant_data.model_dump()
+        from ..utils.address_utils import build_address
+        tenant_dict["address"] = build_address(tenant_dict)
         
         # Setze client_id falls angegeben (und Spalte existiert)
         if client_id:
@@ -301,10 +303,12 @@ def update_tenant(
         )
     
     try:
-        # Update only provided fields
         update_data = tenant_data.model_dump(exclude_unset=True)
+        from ..utils.address_utils import build_address
+        update_data["address"] = build_address({**{k: getattr(tenant, k) for k in ("address", "address_street", "postal_code", "city") if hasattr(tenant, k)}, **update_data})
         for field, value in update_data.items():
-            setattr(tenant, field, value)
+            if hasattr(tenant, field):
+                setattr(tenant, field, value)
         
         db.commit()
         db.refresh(tenant)

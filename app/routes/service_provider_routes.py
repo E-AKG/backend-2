@@ -21,6 +21,9 @@ class ServiceProviderCreate(BaseModel):
     phone: Optional[str] = None
     mobile: Optional[str] = None
     address: Optional[str] = None
+    address_street: Optional[str] = None
+    postal_code: Optional[str] = None
+    city: Optional[str] = None
     tax_id: Optional[str] = None
     iban: Optional[str] = None
     bank_name: Optional[str] = None
@@ -37,6 +40,9 @@ class ServiceProviderUpdate(BaseModel):
     phone: Optional[str] = None
     mobile: Optional[str] = None
     address: Optional[str] = None
+    address_street: Optional[str] = None
+    postal_code: Optional[str] = None
+    city: Optional[str] = None
     tax_id: Optional[str] = None
     iban: Optional[str] = None
     bank_name: Optional[str] = None
@@ -57,6 +63,9 @@ class ServiceProviderOut(BaseModel):
     phone: Optional[str]
     mobile: Optional[str]
     address: Optional[str]
+    address_street: Optional[str] = None
+    postal_code: Optional[str] = None
+    city: Optional[str] = None
     tax_id: Optional[str]
     iban: Optional[str]
     bank_name: Optional[str]
@@ -128,10 +137,13 @@ def create_service_provider(
     if not client:
         raise HTTPException(status_code=404, detail="Mandant nicht gefunden")
     
+    from ..utils.address_utils import build_address
+    data = provider_data.model_dump() if hasattr(provider_data, 'model_dump') else provider_data.dict()
+    data["address"] = build_address(data)
     provider = ServiceProvider(
         owner_id=current_user.id,
         client_id=client_id,
-        **provider_data.dict()
+        **data
     )
     
     db.add(provider)
@@ -157,9 +169,12 @@ def update_service_provider(
     if not provider:
         raise HTTPException(status_code=404, detail="Dienstleister nicht gefunden")
     
-    update_data = provider_data.dict(exclude_unset=True)
+    from ..utils.address_utils import build_address
+    update_data = provider_data.model_dump(exclude_unset=True) if hasattr(provider_data, 'model_dump') else provider_data.dict(exclude_unset=True)
+    update_data["address"] = build_address({**{"address": provider.address, "address_street": getattr(provider, "address_street", None), "postal_code": getattr(provider, "postal_code", None), "city": getattr(provider, "city", None)}, **update_data})
     for key, value in update_data.items():
-        setattr(provider, key, value)
+        if hasattr(provider, key):
+            setattr(provider, key, value)
     
     db.commit()
     db.refresh(provider)

@@ -19,6 +19,9 @@ class OwnerCreate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
+    address_street: Optional[str] = None
+    postal_code: Optional[str] = None
+    city: Optional[str] = None
     # Steuerliche Daten
     tax_id: Optional[str] = None  # Steuer-ID (für Bescheinigungen)
     # Eigentumsanteile
@@ -38,6 +41,9 @@ class OwnerUpdate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
+    address_street: Optional[str] = None
+    postal_code: Optional[str] = None
+    city: Optional[str] = None
     tax_id: Optional[str] = None
     ownership_percentage: Optional[float] = None
     iban: Optional[str] = None
@@ -56,6 +62,9 @@ class OwnerOut(BaseModel):
     email: Optional[str]
     phone: Optional[str]
     address: Optional[str]
+    address_street: Optional[str] = None
+    postal_code: Optional[str] = None
+    city: Optional[str] = None
     tax_id: Optional[str]
     ownership_percentage: Optional[float]
     iban: Optional[str]
@@ -124,10 +133,13 @@ def create_owner(
     if not client:
         raise HTTPException(status_code=404, detail="Mandant nicht gefunden")
     
+    from ..utils.address_utils import build_address
+    data = owner_data.model_dump(exclude={"ownership_percentage"}) if hasattr(owner_data, 'model_dump') else owner_data.dict(exclude={"ownership_percentage"})
+    data["address"] = build_address(data)
     owner = Owner(
         owner_id=current_user.id,
         client_id=client_id,
-        **owner_data.dict(exclude={"ownership_percentage"})
+        **data
     )
     
     if owner_data.ownership_percentage is not None:
@@ -156,9 +168,12 @@ def update_owner(
     if not owner:
         raise HTTPException(status_code=404, detail="Eigentümer nicht gefunden")
     
-    update_data = owner_data.dict(exclude_unset=True, exclude={"ownership_percentage"})
+    from ..utils.address_utils import build_address
+    update_data = owner_data.model_dump(exclude_unset=True, exclude={"ownership_percentage"}) if hasattr(owner_data, 'model_dump') else owner_data.dict(exclude_unset=True, exclude={"ownership_percentage"})
+    update_data["address"] = build_address({**{"address": owner.address, "address_street": getattr(owner, "address_street", None), "postal_code": getattr(owner, "postal_code", None), "city": getattr(owner, "city", None)}, **update_data})
     for key, value in update_data.items():
-        setattr(owner, key, value)
+        if hasattr(owner, key):
+            setattr(owner, key, value)
     
     if owner_data.ownership_percentage is not None:
         owner.ownership_percentage = Decimal(str(owner_data.ownership_percentage))
