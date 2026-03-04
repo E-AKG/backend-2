@@ -1,12 +1,13 @@
-from pydantic import BaseModel, Field, EmailStr, ConfigDict, field_validator
+from pydantic import BaseModel, Field, EmailStr, ConfigDict, field_validator, model_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 import re
 
 
 class TenantCreate(BaseModel):
-    first_name: str = Field(..., min_length=1, max_length=100, description="First name")
-    last_name: str = Field(..., min_length=1, max_length=100, description="Last name")
+    first_name: Optional[str] = Field(None, max_length=100, description="Vorname (bei Privatperson)")
+    last_name: Optional[str] = Field(None, max_length=100, description="Nachname (bei Privatperson)")
+    company_name: Optional[str] = Field(None, max_length=255, description="Firmenname (bei Gewerbe)")
     email: Optional[EmailStr] = Field(None, description="E-Mail für Mieterportal-Zugang")
     phone: Optional[str] = Field(None, max_length=50, description="Telefon")
     address: Optional[str] = Field(None, max_length=500, description="Address")
@@ -43,10 +44,19 @@ class TenantCreate(BaseModel):
         
         return iban
 
+    @model_validator(mode='after')
+    def require_name_or_company(self):
+        has_person = (self.first_name or '').strip() and (self.last_name or '').strip()
+        has_company = (self.company_name or '').strip()
+        if not has_person and not has_company:
+            raise ValueError('Entweder Vorname und Nachname (Privatperson) oder Firmenname (Gewerbe) angeben')
+        return self
+
 
 class TenantUpdate(BaseModel):
     first_name: Optional[str] = Field(None, min_length=1, max_length=100)
     last_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    company_name: Optional[str] = Field(None, max_length=255)
     email: Optional[EmailStr] = None
     phone: Optional[str] = Field(None, max_length=50)
     address: Optional[str] = Field(None, max_length=500)
@@ -86,8 +96,9 @@ class TenantOut(BaseModel):
 
     id: str
     owner_id: int
-    first_name: str
-    last_name: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    company_name: Optional[str] = None
     email: Optional[str]
     phone: Optional[str]
     address: Optional[str]
