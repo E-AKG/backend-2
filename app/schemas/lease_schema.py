@@ -10,10 +10,9 @@ class LeaseComponentCreate(BaseModel):
     amount: Decimal = Field(..., gt=0, decimal_places=2, description="Amount in EUR")
     description: Optional[str] = Field(None, max_length=255, description="Description")
     
-    # TODO: Uncomment after database migration adds these columns
-    # # Mietanpassung
-    # adjustment_type: Optional[RentAdjustmentType] = Field(default=RentAdjustmentType.FIXED, description="Rent adjustment type")
-    # staggered_schedule: Optional[List[dict]] = Field(None, description="Staggered rent schedule: [{'date': 'YYYY-MM-DD', 'amount': 500.00}, ...]")
+    # Mietanpassung
+    adjustment_type: Optional[RentAdjustmentType] = Field(default=RentAdjustmentType.FIXED, description="Rent adjustment type")
+    staggered_schedule: Optional[List[dict]] = Field(None, description="Staggered rent schedule: [{'date': 'YYYY-MM-DD', 'amount': 500.00}, ...]")
     # 
     # # Indexmiete
     # index_type: Optional[str] = Field(None, description="Index type (e.g., 'VPI', 'Mietspiegel')")
@@ -32,6 +31,8 @@ class LeaseComponentUpdate(BaseModel):
     type: Optional[LeaseComponentType] = None
     amount: Optional[Decimal] = Field(None, gt=0, decimal_places=2)
     description: Optional[str] = Field(None, max_length=255)
+    adjustment_type: Optional[RentAdjustmentType] = None
+    staggered_schedule: Optional[List[dict]] = None
 
 
 class LeaseComponentOut(BaseModel):
@@ -42,9 +43,8 @@ class LeaseComponentOut(BaseModel):
     type: LeaseComponentType
     amount: Decimal
     description: Optional[str]
-    # TODO: Uncomment after database migration adds these columns
-    # adjustment_type: Optional[RentAdjustmentType] = None
-    # staggered_schedule: Optional[List[dict]] = None
+    adjustment_type: Optional[RentAdjustmentType] = None
+    staggered_schedule: Optional[List[dict]] = None
     # index_type: Optional[str] = None
     # index_base_value: Optional[Decimal] = None
     # index_base_date: Optional[date] = None
