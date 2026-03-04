@@ -5,7 +5,10 @@ from datetime import datetime, date
 
 class PropertyCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="Property name")
-    address: str = Field(..., min_length=1, max_length=500, description="Property address")
+    address: Optional[str] = Field(None, max_length=500, description="Deprecated: use address_street, postal_code, city")
+    address_street: Optional[str] = Field(None, max_length=255, description="Straße")
+    postal_code: Optional[str] = Field(None, max_length=20, description="PLZ")
+    city: Optional[str] = Field(None, max_length=100, description="Ort")
     year_built: Optional[int] = Field(None, ge=1800, le=2100, description="Year built")
     size_sqm: Optional[int] = Field(None, gt=0, description="Size in square meters")
     units_count: Optional[int] = Field(None, ge=0, le=1000, description="Anzahl der Einheiten (für automatische Erstellung)")
@@ -44,7 +47,10 @@ class PropertyCreate(BaseModel):
 
 class PropertyUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
-    address: Optional[str] = Field(None, min_length=1, max_length=500)
+    address: Optional[str] = Field(None, max_length=500)
+    address_street: Optional[str] = Field(None, max_length=255)
+    postal_code: Optional[str] = Field(None, max_length=20)
+    city: Optional[str] = Field(None, max_length=100)
     year_built: Optional[int] = Field(None, ge=1800, le=2100)
     size_sqm: Optional[int] = Field(None, gt=0)
     features: Optional[Dict[str, Any]] = None
@@ -70,7 +76,10 @@ class PropertyOut(BaseModel):
     id: str
     owner_id: int
     name: str
-    address: str
+    address: Optional[str] = None
+    address_street: Optional[str] = None
+    postal_code: Optional[str] = None
+    city: Optional[str] = None
     year_built: Optional[int]
     size_sqm: Optional[int]
     features: Dict[str, Any]

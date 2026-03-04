@@ -10,7 +10,10 @@ class TenantCreate(BaseModel):
     company_name: Optional[str] = Field(None, max_length=255, description="Firmenname (bei Gewerbe)")
     email: Optional[EmailStr] = Field(None, description="E-Mail für Mieterportal-Zugang")
     phone: Optional[str] = Field(None, max_length=50, description="Telefon")
-    address: Optional[str] = Field(None, max_length=500, description="Address")
+    address: Optional[str] = Field(None, max_length=500, description="Deprecated: use address_street, postal_code, city")
+    address_street: Optional[str] = Field(None, max_length=255, description="Straße")
+    postal_code: Optional[str] = Field(None, max_length=20, description="PLZ")
+    city: Optional[str] = Field(None, max_length=100, description="Ort")
     notes: Optional[str] = Field(None, description="Additional notes")
     
     # Alle Vertragspartner (z.B. Eheleute)
@@ -60,6 +63,9 @@ class TenantUpdate(BaseModel):
     email: Optional[EmailStr] = None
     phone: Optional[str] = Field(None, max_length=50)
     address: Optional[str] = Field(None, max_length=500)
+    address_street: Optional[str] = Field(None, max_length=255)
+    postal_code: Optional[str] = Field(None, max_length=20)
+    city: Optional[str] = Field(None, max_length=100)
     notes: Optional[str] = None
     
     # Alle Vertragspartner
@@ -102,6 +108,9 @@ class TenantOut(BaseModel):
     email: Optional[str]
     phone: Optional[str]
     address: Optional[str]
+    address_street: Optional[str] = None
+    postal_code: Optional[str] = None
+    city: Optional[str] = None
     notes: Optional[str]
     
     # Alle Vertragspartner
