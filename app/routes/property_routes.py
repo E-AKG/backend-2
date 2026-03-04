@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from typing import Optional
@@ -174,6 +175,79 @@ def get_property(
         )
     
     return PropertyOut.model_validate(property_obj)
+
+
+@router.get("/{property_id}/export-pdf")
+def export_property_pdf(
+    property_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Liegenschaft als PDF exportieren (alle Eckdaten, Einheiten, Stammdaten, technische Daten)."""
+    property_obj = db.query(Property).filter(
+        Property.id == property_id,
+        Property.owner_id == current_user.id
+    ).first()
+
+    if not property_obj:
+        raise HTTPException(status_code=404, detail="Objekt nicht gefunden")
+
+    try:
+        from ..utils.pdf_generator import generate_property_pdf, PDF_AVAILABLE
+        if not PDF_AVAILABLE:
+            raise HTTPException(
+                status_code=503,
+                detail="PDF-Generierung nicht verfügbar. Bitte installieren Sie: pip install jinja2 weasyprint"
+            )
+
+        # Property-Daten als Dict
+        prop_dict = {
+            "name": property_obj.name,
+            "address": property_obj.address,
+            "address_street": getattr(property_obj, "address_street", None),
+            "postal_code": getattr(property_obj, "postal_code", None),
+            "city": getattr(property_obj, "city", None),
+            "year_built": property_obj.year_built,
+            "size_sqm": property_obj.size_sqm,
+            "notes": property_obj.notes,
+            "unit_value_file_number": property_obj.unit_value_file_number,
+            "cadastral_district": property_obj.cadastral_district,
+            "cadastral_parcel": property_obj.cadastral_parcel,
+            "heating_type": property_obj.heating_type.value if property_obj.heating_type else None,
+            "energy_certificate_valid_until": property_obj.energy_certificate_valid_until,
+            "energy_rating_value": float(property_obj.energy_rating_value) if property_obj.energy_rating_value else None,
+            "energy_rating_class": property_obj.energy_rating_class,
+            "total_residential_area": property_obj.total_residential_area,
+            "total_commercial_area": property_obj.total_commercial_area,
+        }
+
+        # Einheiten
+        units_data = []
+        for u in property_obj.units:
+            sqm = u.size_sqm or u.living_area_sqm
+            units_data.append({
+                "unit_number": u.unit_number,
+                "unit_label": u.unit_label,
+                "floor": u.floor,
+                "size_sqm": sqm,
+                "living_area_sqm": float(u.living_area_sqm) if u.living_area_sqm else None,
+                "status": u.status.value if u.status else "vacant",
+            })
+
+        safe_name = "".join(c if c.isalnum() or c in " -_" else "_" for c in (property_obj.name or "liegenschaft")[:50])
+        filename = f"liegenschaft_{safe_name}.pdf"
+        pdf_path = generate_property_pdf(prop_dict, units_data, output_filename=filename)
+
+        return FileResponse(
+            path=pdf_path,
+            filename=filename,
+            media_type="application/pdf"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Fehler beim PDF-Export: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"PDF konnte nicht erstellt werden: {str(e)}")
 
 
 @router.put("/{property_id}", response_model=PropertyOut)
