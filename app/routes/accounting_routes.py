@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from typing import List, Optional
@@ -34,6 +34,10 @@ class AccountingItemCreate(BaseModel):
     amount: float
     is_allocable: bool = True
     notes: Optional[str] = None
+
+
+class CalculateBody(BaseModel):
+    item_allocation: Optional[dict] = None
 
 
 class AccountingResponse(BaseModel):
@@ -206,10 +210,12 @@ def add_accounting_item(
 @router.post("/{accounting_id}/calculate")
 def calculate_accounting(
     accounting_id: str,
-    allocation_method: str = Query("area", description="Umlageschlüssel: 'area', 'units', 'persons'"),
+    allocation_method: str = Query("area", description="Umlageschlüssel: 'area', 'units', 'persons', 'consumption'"),
+    body: Optional[CalculateBody] = Body(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    item_allocation = (body.item_allocation or {}) if body else {}
     """
     Abrechnung berechnen
     Verteilt Kosten auf alle Einheiten basierend auf Umlageschlüssel
@@ -299,6 +305,19 @@ def calculate_accounting(
     
     total_allocable_costs = sum(float(item.amount) for item in items)
     
+    def get_allocation_factor(unit, method):
+        """Berechne Umlagefaktor für eine Einheit basierend auf der Methode."""
+        if method == "area" and unit.size_sqm and total_area > 0:
+            return Decimal(unit.size_sqm) / Decimal(total_area)
+        if method in ("units", "persons") and total_units > 0:
+            return Decimal(1) / Decimal(total_units)
+        if method == "consumption":
+            # Verbrauch: Fallback auf Fläche (ohne Zählerdaten)
+            if unit.size_sqm and total_area > 0:
+                return Decimal(unit.size_sqm) / Decimal(total_area)
+            return Decimal(1) / Decimal(total_units) if total_units > 0 else Decimal(0)
+        return Decimal(1) / Decimal(total_units) if total_units > 0 else Decimal(0)
+    
     # Lösche alte Einzelabrechnungen
     db.query(UnitSettlement).filter(
         UnitSettlement.accounting_id == accounting_id
@@ -314,16 +333,12 @@ def calculate_accounting(
     
     # Verarbeite alle Einheiten (auch leere)
     for unit in all_units:
-        # Berechne Anteil basierend auf Umlageschlüssel
-        if allocation_method == "area" and unit.size_sqm and total_area > 0:
-            allocation_factor = Decimal(unit.size_sqm) / Decimal(total_area)
-        elif allocation_method == "units" and total_units > 0:
-            allocation_factor = Decimal(1) / Decimal(total_units)
-        else:
-            allocation_factor = Decimal(1) / Decimal(total_units) if total_units > 0 else Decimal(0)
-        
-        # Gesamtkostenanteil dieser Einheit (unabhängig von Belegung)
-        unit_total_costs = Decimal(str(total_allocable_costs)) * allocation_factor
+        # Gesamtkostenanteil: Summe pro Kostenposten mit je eigenem Umlageschlüssel
+        unit_total_costs = Decimal(0)
+        for item in items:
+            method = item_allocation.get(str(item.id), allocation_method)
+            factor = get_allocation_factor(unit, method)
+            unit_total_costs += Decimal(str(item.amount)) * factor
         
         # Hole alle Verträge dieser Einheit im Zeitraum
         unit_leases = unit_to_leases.get(unit.id, [])
@@ -450,6 +465,8 @@ def calculate_accounting(
     if not accounting.meta_data:
         accounting.meta_data = {}
     accounting.meta_data["allocation_method"] = allocation_method
+    if item_allocation:
+        accounting.meta_data["item_allocation"] = item_allocation
     
     db.commit()
     
